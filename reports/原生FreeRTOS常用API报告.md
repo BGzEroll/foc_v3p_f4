@@ -86,27 +86,35 @@ TickType_t timeout = pdMS_TO_TICKS(100);
 ### 4.1 动态创建任务
 
 ```c
-TaskHandle_t motorTaskHandle = NULL;
+#define MOTOR_TASK_STACK_DEPTH 256U
+#define MOTOR_TASK_PRIORITY    (tskIDLE_PRIORITY + 4U)
 
-static void MotorTask(void *argument)
+static TaskHandle_t motor_task_handle = NULL;
+
+/**
+ * @brief 电机控制任务入口
+ *
+ * @param argument 任务参数
+ */
+static void motor_task_entry(void *argument)
 {
     for (;;)
     {
-        /* task body */
+        /* 执行电机控制任务 */
         vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
-BaseType_t result = xTaskCreate(
-    MotorTask,                 /* 任务入口 */
-    "motor",                  /* 调试名称，最多 15 个可见字符 */
-    256,                       /* 栈深度：256 words = 1024 bytes */
-    NULL,                      /* 传给任务的参数 */
-    tskIDLE_PRIORITY + 4,      /* 优先级 */
-    &motorTaskHandle           /* 返回任务句柄，可传 NULL */
+BaseType_t create_result = xTaskCreate(
+    motor_task_entry,
+    "motor",
+    MOTOR_TASK_STACK_DEPTH,
+    NULL,
+    MOTOR_TASK_PRIORITY,
+    &motor_task_handle
 );
 
-configASSERT(result == pdPASS);
+configASSERT(create_result == pdPASS);
 ```
 
 动态创建会从 `heap_4` 分配 TCB 和任务栈。任务自删后，内存由 Idle 任务回收，因此不能长期饿死 Idle 任务。
@@ -114,20 +122,20 @@ configASSERT(result == pdPASS);
 ### 4.2 静态创建任务
 
 ```c
-static StaticTask_t motorTaskTcb;
-static StackType_t motorTaskStack[256];
+static StaticTask_t motor_task_tcb;
+static StackType_t motor_task_stack[MOTOR_TASK_STACK_DEPTH];
 
-TaskHandle_t motorTaskHandle = xTaskCreateStatic(
-    MotorTask,
+TaskHandle_t motor_task_handle = xTaskCreateStatic(
+    motor_task_entry,
     "motor",
-    256,
+    MOTOR_TASK_STACK_DEPTH,
     NULL,
-    tskIDLE_PRIORITY + 4,
-    motorTaskStack,
-    &motorTaskTcb
+    MOTOR_TASK_PRIORITY,
+    motor_task_stack,
+    &motor_task_tcb
 );
 
-configASSERT(motorTaskHandle != NULL);
+configASSERT(motor_task_handle != NULL);
 ```
 
 静态创建不会占用 FreeRTOS heap，适合数量固定、需要确定性内存布局的任务。
@@ -162,15 +170,20 @@ vTaskDelay(pdMS_TO_TICKS(10));
 ### 5.2 固定周期运行
 
 ```c
-static void ControlTask(void *argument)
+/**
+ * @brief 固定周期控制任务入口
+ *
+ * @param argument 任务参数
+ */
+static void control_task_entry(void *argument)
 {
-    TickType_t lastWakeTime = xTaskGetTickCount();
-    const TickType_t period = pdMS_TO_TICKS(1);
+    TickType_t last_wake_time = xTaskGetTickCount();
+    const TickType_t period_ticks = pdMS_TO_TICKS(1);
 
     for (;;)
     {
-        RunControlLoop();
-        vTaskDelayUntil(&lastWakeTime, period);
+        run_control_loop();
+        vTaskDelayUntil(&last_wake_time, period_ticks);
     }
 }
 ```
@@ -182,8 +195,8 @@ FOC 的 PWM/ADC 高频闭环通常应由硬件定时器和中断驱动，不建�
 其他时间 API：
 
 ```c
-TickType_t now = xTaskGetTickCount();
-TickType_t nowFromIsr = xTaskGetTickCountFromISR();
+TickType_t current_tick = xTaskGetTickCount();
+TickType_t current_tick_from_isr = xTaskGetTickCountFromISR();
 ```
 
 ## 6. 任务通知
@@ -195,7 +208,7 @@ TickType_t nowFromIsr = xTaskGetTickCountFromISR();
 任务中等待：
 
 ```c
-uint32_t count = ulTaskNotifyTake(
+uint32_t notification_count = ulTaskNotifyTake(
     pdTRUE,          /* 返回前将计数清零；pdFALSE 表示只减 1 */
     portMAX_DELAY
 );
@@ -204,19 +217,22 @@ uint32_t count = ulTaskNotifyTake(
 另一个任务发送：
 
 ```c
-xTaskNotifyGive(motorTaskHandle);
+xTaskNotifyGive(motor_task_handle);
 ```
 
 ISR 发送：
 
 ```c
+/**
+ * @brief DMA 中断处理函数
+ */
 void DMA_IRQHandler(void)
 {
-    BaseType_t higherPriorityTaskWoken = pdFALSE;
+    BaseType_t higher_priority_task_woken = pdFALSE;
 
-    /* clear hardware interrupt flags first */
-    vTaskNotifyGiveFromISR(motorTaskHandle, &higherPriorityTaskWoken);
-    portYIELD_FROM_ISR(higherPriorityTaskWoken);
+    /* 先清除硬件中断标志 */
+    vTaskNotifyGiveFromISR(motor_task_handle, &higher_priority_task_woken);
+    portYIELD_FROM_ISR(higher_priority_task_woken);
 }
 ```
 
@@ -224,32 +240,36 @@ void DMA_IRQHandler(void)
 
 ```c
 /* 设置事件位 */
-xTaskNotify(taskHandle, EVENT_ADC_READY, eSetBits);
+xTaskNotify(task_handle, EVENT_ADC_READY, eSetBits);
 
 /* 数值加一 */
-xTaskNotify(taskHandle, 0, eIncrement);
+xTaskNotify(task_handle, 0, eIncrement);
 
 /* 无条件覆盖值 */
-xTaskNotify(taskHandle, value, eSetValueWithOverwrite);
+xTaskNotify(task_handle, notification_value, eSetValueWithOverwrite);
 
 /* 只有尚无待处理通知时才写值 */
-BaseType_t ok = xTaskNotify(taskHandle, value, eSetValueWithoutOverwrite);
+BaseType_t notification_sent = xTaskNotify(
+    task_handle,
+    notification_value,
+    eSetValueWithoutOverwrite
+);
 ```
 
 等待事件位：
 
 ```c
-uint32_t notifiedValue;
+uint32_t notified_value;
 
 if (xTaskNotifyWait(
         0,                  /* 进入等待前清除的位 */
         UINT32_MAX,         /* 返回前清除的位 */
-        &notifiedValue,
+        &notified_value,
         pdMS_TO_TICKS(20)) == pdTRUE)
 {
-    if ((notifiedValue & EVENT_ADC_READY) != 0U)
+    if ((notified_value & EVENT_ADC_READY) != 0U)
     {
-        /* handle event */
+        /* 处理 ADC 就绪事件 */
     }
 }
 ```
@@ -269,25 +289,25 @@ if (xTaskNotifyWait(
 ```c
 typedef struct
 {
-    uint16_t adcA;
-    uint16_t adcB;
+    uint16_t adc_a;
+    uint16_t adc_b;
     TickType_t timestamp;
-} Sample_t;
+} sample_data;
 
-QueueHandle_t sampleQueue = xQueueCreate(8, sizeof(Sample_t));
-configASSERT(sampleQueue != NULL);
+QueueHandle_t sample_queue = xQueueCreate(8, sizeof(sample_data));
+configASSERT(sample_queue != NULL);
 ```
 
 发送和接收：
 
 ```c
-Sample_t tx = {0};
-xQueueSend(sampleQueue, &tx, pdMS_TO_TICKS(5));
+sample_data tx_sample = {0};
+xQueueSend(sample_queue, &tx_sample, pdMS_TO_TICKS(5));
 
-Sample_t rx;
-if (xQueueReceive(sampleQueue, &rx, portMAX_DELAY) == pdPASS)
+sample_data rx_sample;
+if (xQueueReceive(sample_queue, &rx_sample, portMAX_DELAY) == pdPASS)
 {
-    /* use rx */
+    /* 使用接收到的采样数据 */
 }
 ```
 
@@ -310,11 +330,11 @@ if (xQueueReceive(sampleQueue, &rx, portMAX_DELAY) == pdPASS)
 ISR 模板：
 
 ```c
-BaseType_t higherPriorityTaskWoken = pdFALSE;
-Sample_t sample = ReadAdcSample();
+BaseType_t higher_priority_task_woken = pdFALSE;
+sample_data sample = read_adc_sample();
 
-xQueueSendFromISR(sampleQueue, &sample, &higherPriorityTaskWoken);
-portYIELD_FROM_ISR(higherPriorityTaskWoken);
+xQueueSendFromISR(sample_queue, &sample, &higher_priority_task_woken);
+portYIELD_FROM_ISR(higher_priority_task_woken);
 ```
 
 注意：
@@ -335,14 +355,14 @@ portYIELD_FROM_ISR(higherPriorityTaskWoken);
 ### 8.1 二值信号量
 
 ```c
-SemaphoreHandle_t adcDone = xSemaphoreCreateBinary();
-configASSERT(adcDone != NULL);
+SemaphoreHandle_t adc_done_semaphore = xSemaphoreCreateBinary();
+configASSERT(adc_done_semaphore != NULL);
 
 /* 等待事件 */
-xSemaphoreTake(adcDone, portMAX_DELAY);
+xSemaphoreTake(adc_done_semaphore, portMAX_DELAY);
 
 /* 发送事件 */
-xSemaphoreGive(adcDone);
+xSemaphoreGive(adc_done_semaphore);
 ```
 
 `xSemaphoreCreateBinary()` 创建后初始为空，第一次 `Take` 前需要某处 `Give`。
@@ -350,9 +370,9 @@ xSemaphoreGive(adcDone);
 ISR 中：
 
 ```c
-BaseType_t higherPriorityTaskWoken = pdFALSE;
-xSemaphoreGiveFromISR(adcDone, &higherPriorityTaskWoken);
-portYIELD_FROM_ISR(higherPriorityTaskWoken);
+BaseType_t higher_priority_task_woken = pdFALSE;
+xSemaphoreGiveFromISR(adc_done_semaphore, &higher_priority_task_woken);
+portYIELD_FROM_ISR(higher_priority_task_woken);
 ```
 
 对于单一 ISR 唤醒单一任务，优先考虑任务通知，它更轻量。
@@ -360,11 +380,11 @@ portYIELD_FROM_ISR(higherPriorityTaskWoken);
 ### 8.2 计数信号量
 
 ```c
-SemaphoreHandle_t resources = xSemaphoreCreateCounting(4, 4);
+SemaphoreHandle_t resource_semaphore = xSemaphoreCreateCounting(4, 4);
 
-xSemaphoreTake(resources, portMAX_DELAY);
-/* use one resource */
-xSemaphoreGive(resources);
+xSemaphoreTake(resource_semaphore, portMAX_DELAY);
+/* 使用一个资源 */
+xSemaphoreGive(resource_semaphore);
 ```
 
 适合资源计数或事件累计。它不传递具体数据；需要传数据时使用队列。
@@ -372,12 +392,12 @@ xSemaphoreGive(resources);
 ### 8.3 互斥锁
 
 ```c
-SemaphoreHandle_t spiMutex = xSemaphoreCreateMutex();
+SemaphoreHandle_t spi_mutex = xSemaphoreCreateMutex();
 
-if (xSemaphoreTake(spiMutex, pdMS_TO_TICKS(20)) == pdTRUE)
+if (xSemaphoreTake(spi_mutex, pdMS_TO_TICKS(20)) == pdTRUE)
 {
-    AccessSharedSpi();
-    xSemaphoreGive(spiMutex);
+    access_shared_spi();
+    xSemaphoreGive(spi_mutex);
 }
 ```
 
@@ -386,8 +406,8 @@ if (xSemaphoreTake(spiMutex, pdMS_TO_TICKS(20)) == pdTRUE)
 递归互斥锁必须成对调用专用 API：
 
 ```c
-xSemaphoreTakeRecursive(recursiveMutex, portMAX_DELAY);
-xSemaphoreGiveRecursive(recursiveMutex);
+xSemaphoreTakeRecursive(recursive_mutex, portMAX_DELAY);
+xSemaphoreGiveRecursive(recursive_mutex);
 ```
 
 不要混用普通 `Take/Give` 和递归版本。
@@ -407,11 +427,11 @@ xSemaphoreGiveRecursive(recursiveMutex);
 #define EVENT_PWM_READY   (1UL << 1)
 #define EVENT_FAULT       (1UL << 2)
 
-EventGroupHandle_t systemEvents = xEventGroupCreate();
-configASSERT(systemEvents != NULL);
+EventGroupHandle_t system_event_group = xEventGroupCreate();
+configASSERT(system_event_group != NULL);
 
 EventBits_t bits = xEventGroupWaitBits(
-    systemEvents,
+    system_event_group,
     EVENT_ADC_READY | EVENT_PWM_READY,
     pdTRUE,             /* 返回时清除等待位 */
     pdTRUE,             /* 等待全部位；pdFALSE 表示任一位 */
@@ -425,8 +445,8 @@ EventBits_t bits = xEventGroupWaitBits(
 xEventGroupSetBits(group, bits);
 xEventGroupClearBits(group, bits);
 xEventGroupGetBits(group);
-xEventGroupWaitBits(group, bits, clearOnExit, waitAll, timeout);
-xEventGroupSync(group, bitsToSet, bitsToWaitFor, timeout);
+xEventGroupWaitBits(group, bits, clear_on_exit, wait_all, timeout);
+xEventGroupSync(group, bits_to_set, bits_to_wait_for, timeout);
 vEventGroupDelete(group);
 ```
 
@@ -443,24 +463,26 @@ vEventGroupDelete(group);
 ```
 
 ```c
-static void StatusTimerCallback(TimerHandle_t timer)
+/**
+ * @brief 状态软件定时器回调
+ *
+ * @param timer 软件定时器句柄
+ */
+static void status_timer_callback(TimerHandle_t timer)
 {
-    void *context = pvTimerGetTimerID(timer);
-    (void)context;
-
-    /* callback must not block */
+    /* 回调中不得执行阻塞操作 */
 }
 
-TimerHandle_t statusTimer = xTimerCreate(
+TimerHandle_t status_timer = xTimerCreate(
     "status",
     pdMS_TO_TICKS(100),
     pdTRUE,                     /* 自动重装 */
-    NULL,                       /* timer ID */
-    StatusTimerCallback
+    NULL,                       /* 定时器 ID */
+    status_timer_callback
 );
 
-configASSERT(statusTimer != NULL);
-xTimerStart(statusTimer, 0);
+configASSERT(status_timer != NULL);
+xTimerStart(status_timer, 0);
 ```
 
 常用控制 API：
@@ -469,7 +491,7 @@ xTimerStart(statusTimer, 0);
 xTimerStart(timer, timeout);
 xTimerStop(timer, timeout);
 xTimerReset(timer, timeout);
-xTimerChangePeriod(timer, newPeriod, timeout);
+xTimerChangePeriod(timer, new_period, timeout);
 xTimerIsTimerActive(timer);
 xTimerDelete(timer, timeout);
 pvTimerGetTimerID(timer);
@@ -491,17 +513,17 @@ ISR 中有对应的 `xTimerStartFromISR()`、`xTimerStopFromISR()`、`xTimerRese
 ```c
 #include "stream_buffer.h"
 
-StreamBufferHandle_t uartStream = xStreamBufferCreate(256, 1);
+StreamBufferHandle_t uart_stream = xStreamBufferCreate(256, 1);
 
 size_t sent = xStreamBufferSend(
-    uartStream,
+    uart_stream,
     data,
     length,
     pdMS_TO_TICKS(10)
 );
 
 size_t received = xStreamBufferReceive(
-    uartStream,
+    uart_stream,
     buffer,
     sizeof(buffer),
     portMAX_DELAY
@@ -533,7 +555,7 @@ V10.3.1 的 Stream/Message Buffer 按单写入者、单读取者设计。多个�
 void *buffer = pvPortMalloc(128);
 if (buffer != NULL)
 {
-    /* use buffer */
+    /* 使用缓冲区 */
     vPortFree(buffer);
 }
 ```
@@ -541,8 +563,8 @@ if (buffer != NULL)
 诊断 API：
 
 ```c
-size_t freeNow = xPortGetFreeHeapSize();
-size_t minimumEver = xPortGetMinimumEverFreeHeapSize();
+size_t free_now = xPortGetFreeHeapSize();
+size_t minimum_ever = xPortGetMinimumEverFreeHeapSize();
 
 HeapStats_t stats;
 vPortGetHeapStats(&stats);
@@ -561,7 +583,7 @@ vPortGetHeapStats(&stats);
 
 ```c
 taskENTER_CRITICAL();
-/* very short non-blocking critical section */
+/* 执行简短且不会阻塞的临界区操作 */
 taskEXIT_CRITICAL();
 ```
 
@@ -572,16 +594,16 @@ taskEXIT_CRITICAL();
 当前 Cortex-M4F port 提供：
 
 ```c
-UBaseType_t savedMask = portSET_INTERRUPT_MASK_FROM_ISR();
-/* short ISR critical section */
-portCLEAR_INTERRUPT_MASK_FROM_ISR(savedMask);
+UBaseType_t saved_mask = portSET_INTERRUPT_MASK_FROM_ISR();
+/* 执行简短的 ISR 临界区操作 */
+portCLEAR_INTERRUPT_MASK_FROM_ISR(saved_mask);
 ```
 
 ### 13.3 暂停调度器
 
 ```c
 vTaskSuspendAll();
-/* other tasks cannot run, but interrupts remain enabled */
+/* 其他任务暂停调度，但中断仍保持启用 */
 xTaskResumeAll();
 ```
 
@@ -592,11 +614,11 @@ xTaskResumeAll();
 在 ISR 中只能调用名字带 `FromISR` 的 FreeRTOS API，并使用标准唤醒模板：
 
 ```c
-BaseType_t higherPriorityTaskWoken = pdFALSE;
+BaseType_t higher_priority_task_woken = pdFALSE;
 
-xQueueSendFromISR(queue, &item, &higherPriorityTaskWoken);
+xQueueSendFromISR(queue, &item, &higher_priority_task_woken);
 
-portYIELD_FROM_ISR(higherPriorityTaskWoken);
+portYIELD_FROM_ISR(higher_priority_task_woken);
 ```
 
 本工程：
@@ -615,9 +637,9 @@ STM32 数字越小，中断优先级越高：
 ## 14. 诊断 API
 
 ```c
-UBaseType_t freeStackWords = uxTaskGetStackHighWaterMark(taskHandle);
-UBaseType_t taskCount = uxTaskGetNumberOfTasks();
-eTaskState state = eTaskGetState(taskHandle);
+UBaseType_t free_stack_words = uxTaskGetStackHighWaterMark(task_handle);
+UBaseType_t task_count = uxTaskGetNumberOfTasks();
+eTaskState task_state = eTaskGetState(task_handle);
 ```
 
 `uxTaskGetStackHighWaterMark()` 返回任务历史最小剩余栈空间，单位是 words，不是字节。STM32F407 上乘以 4 才是字节数。
@@ -681,15 +703,15 @@ void vApplicationMallocFailedHook(void);
 等价的原生动态创建约为：
 
 ```c
-TaskHandle_t defaultTaskHandle;
+TaskHandle_t default_task_handle;
 
 configASSERT(xTaskCreate(
-    StartDefaultTask,
-    "defaultTask",
+    default_task_entry,
+    "default_task",
     128,               /* 128 words = 512 bytes */
     NULL,
     24,                /* 保持现有 CMSIS Normal 优先级 */
-    &defaultTaskHandle
+    &default_task_handle
 ) == pdPASS);
 ```
 
@@ -729,8 +751,6 @@ osKernelStart();
 - 原生创建的对象建议始终使用原生 API 操作。
 - 不要在未核对 wrapper 实现时，把 CMSIS handle 随意传入原生 API。
 
-业务文件直接包含所需的原生头文件：
-
 建议业务文件直接包含需要的原生头文件：
 
 ```c
@@ -746,18 +766,18 @@ osKernelStart();
 
 ```c
 /* USER CODE BEGIN RTOS_QUEUES */
-sampleQueue = xQueueCreate(8, sizeof(Sample_t));
-configASSERT(sampleQueue != NULL);
+sample_queue = xQueueCreate(8, sizeof(sample_data));
+configASSERT(sample_queue != NULL);
 /* USER CODE END RTOS_QUEUES */
 
 /* USER CODE BEGIN RTOS_THREADS */
 configASSERT(xTaskCreate(
-    MotorTask,
+    motor_task_entry,
     "motor",
     256,
     NULL,
     25,
-    &motorTaskHandle
+    &motor_task_handle
 ) == pdPASS);
 /* USER CODE END RTOS_THREADS */
 ```
