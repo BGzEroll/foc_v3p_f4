@@ -4,5 +4,6 @@
     "cmake.exportCompileCommandsFile": true,
     "C_Cpp.default.compileCommands": "${workspaceFolder}/build/Debug/compile_commands.json",
     "C_Cpp.default.compilerPath": "/usr/bin/arm-none-eabi-g++",
-    "C_Cpp.default.intelliSenseMode": "linux-gcc-arm"
+    "C_Cpp.default.intelliSenseMode": "linux-gcc-arm",
+    "cortex-debug.liveWatchRefreshRate": 300
 }
