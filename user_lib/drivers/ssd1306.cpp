@@ -1,14 +1,17 @@
-#include "ssd1306.h"
+#include "drivers/ssd1306.h"
 
-#include "system/delay.h"
+#include "FreeRTOS.h"
+#include "task.h"
+
 #include <string.h>
 
-#define SSD1306_PAGE_NUM                8
-#define SSD1306_PAGE_WIDTH              128
-#define SSD1306_CHAR_WIDTH              8
-#define SSD1306_CHAR_HEIGHT_PAGE        2
-#define SSD1306_LINE_NUM                4
-#define SSD1306_COLUMN_NUM              16
+static constexpr uint8_t SSD1306_PAGE_NUM = 8;
+static constexpr uint8_t SSD1306_PAGE_WIDTH = 128;
+static constexpr uint8_t SSD1306_CHAR_WIDTH = 8;
+static constexpr uint8_t SSD1306_CHAR_HEIGHT_PAGE = 2;
+static constexpr uint8_t SSD1306_LINE_NUM = 4;
+static constexpr uint8_t SSD1306_COLUMN_NUM = 16;
+static constexpr uint32_t SSD1306_RESET_TIME_MS = 200;
 
 // oled 字模库，宽 8 像素，高 16 像素
 static const uint8_t oled_font_8x16[][16] =
@@ -311,16 +314,19 @@ static const uint8_t oled_font_8x16[][16] =
  * @param dc_pin 数据命令引脚编号
  */
 ssd1306::ssd1306(uint8_t spi_bus_num,
-                 GPIO_TypeDef *cs_port, uint16_t cs_pin,
-                 GPIO_TypeDef *res_port, uint16_t res_pin,
-                 GPIO_TypeDef *dc_port, uint16_t dc_pin)
+    GPIO_TypeDef *cs_port,
+    uint16_t cs_pin,
+    GPIO_TypeDef *res_port,
+    uint16_t res_pin,
+    GPIO_TypeDef *dc_port,
+    uint16_t dc_pin)
     : spi(spi_bus_num),
-      cs_port(cs_port),
-      cs_pin(cs_pin),
-      res_port(res_port),
-      res_pin(res_pin),
-      dc_port(dc_port),
-      dc_pin(dc_pin)
+        cs_port(cs_port),
+        cs_pin(cs_pin),
+        res_port(res_port),
+        res_pin(res_pin),
+        dc_port(dc_port),
+        dc_pin(dc_pin)
 {
     memset(fb, 0, sizeof(fb));
     memset(dirty, 1, sizeof(dirty));
@@ -328,60 +334,68 @@ ssd1306::ssd1306(uint8_t spi_bus_num,
 
 /**
  * @brief 初始化 ssd1306
+ *
+ * @return SPI 总线结果
  */
-void ssd1306::init()
+spi_result ssd1306::init()
 {
-    if(is_init){return;}
-    is_init = true;
+    if(initialized)
+    {
+        return spi_result::OK;
+    }
 
-    spi.init();
-    spi.cs_high(cs_port, cs_pin);
+    spi_result result = spi.init();
+    if(result != spi_result::OK)
+    {
+        return result;
+    }
+
+    HAL_GPIO_WritePin(cs_port, cs_pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(dc_port, dc_pin, GPIO_PIN_SET);
 
     HAL_GPIO_WritePin(res_port, res_pin, GPIO_PIN_RESET);
-    delay::ms(200);
+    vTaskDelay(pdMS_TO_TICKS(SSD1306_RESET_TIME_MS));
     HAL_GPIO_WritePin(res_port, res_pin, GPIO_PIN_SET);
 
-    write_command(0xAE);    // 关闭显示
+    static const uint8_t INIT_COMMANDS[] =
+    {
+        0xAE,
+        0xD5, 0x80,
+        0xA8, 0x3F,
+        0xD3, 0x00,
+        0x40,
+        0xA1,
+        0xC8,
+        0xDA, 0x12,
+        0x81, 0xCF,
+        0xD9, 0xF1,
+        0xDB, 0x30,
+        0xA4,
+        0xA6,
+        0x8D, 0x14,
+        0xAF
+    };
 
-    write_command(0xD5);    // 设置显示时钟分频比/振荡器频率
-    write_command(0x80);
-
-    write_command(0xA8);    // 设置多路复用率
-    write_command(0x3F);
-
-    write_command(0xD3);    // 设置显示偏移
-    write_command(0x00);
-
-    write_command(0x40);    // 设置显示开始行
-
-    write_command(0xA1);    // 设置左右方向，0xA1 正常，0xA0 左右反置
-
-    write_command(0xC8);    // 设置上下方向，0xC8 正常，0xC0 上下反置
-
-    write_command(0xDA);    // 设置 COM 引脚硬件配置
-    write_command(0x12);
-
-    write_command(0x81);    // 设置对比度控制
-    write_command(0xCF);
-
-    write_command(0xD9);    // 设置预充电周期
-    write_command(0xF1);
-
-    write_command(0xDB);    // 设置 VCOMH 取消选择级别
-    write_command(0x30);
-
-    write_command(0xA4);    // 设置整个显示打开/关闭
-
-    write_command(0xA6);    // 设置正常/倒转显示
-
-    write_command(0x8D);    // 设置充电泵
-    write_command(0x14);
-
-    write_command(0xAF);    // 开启显示
+    // 先保持旧工程已验证的逐字节 CS 时序，排除模块对连续命令事务的兼容差异。
+    for(uint16_t index = 0U;
+        index < (uint16_t)sizeof(INIT_COMMANDS);
+        index++)
+    {
+        result = write_commands(&INIT_COMMANDS[index], 1U);
+        if(result != spi_result::OK)
+        {
+            return result;
+        }
+    }
 
     clear();
-    flush();
+    result = flush();
+    if(result == spi_result::OK)
+    {
+        initialized = true;
+    }
+
+    return result;
 }
 
 /**
@@ -395,8 +409,10 @@ void ssd1306::clear()
 
 /**
  * @brief 刷新显示
+ *
+ * @return SPI 总线结果
  */
-void ssd1306::flush()
+spi_result ssd1306::flush()
 {
     uint8_t cmds[3];
 
@@ -408,29 +424,45 @@ void ssd1306::flush()
         cmds[1] = 0x00;
         cmds[2] = 0x10;
 
-        write_commands(cmds, sizeof(cmds));
-        write_data(fb[page], SSD1306_PAGE_WIDTH);
+        spi_result result = write_commands(cmds,
+            (uint16_t)sizeof(cmds));
+        if(result != spi_result::OK)
+        {
+            return result;
+        }
+
+        result = write_data(fb[page], SSD1306_PAGE_WIDTH);
+        if(result != spi_result::OK)
+        {
+            return result;
+        }
 
         dirty[page] = 0;
     }
+
+    return spi_result::OK;
 }
 
 /**
  * @brief 开启显示
+ *
+ * @return SPI 总线结果
  */
-void ssd1306::display_on()
+spi_result ssd1306::display_on()
 {
     const uint8_t cmds[3] = {0x8D, 0x14, 0xAF};
-    write_commands(cmds, sizeof(cmds));
+    return write_commands(cmds, (uint16_t)sizeof(cmds));
 }
 
 /**
  * @brief 关闭显示
+ *
+ * @return SPI 总线结果
  */
-void ssd1306::display_off()
+spi_result ssd1306::display_off()
 {
     const uint8_t cmds[3] = {0x8D, 0x10, 0xAE};
-    write_commands(cmds, sizeof(cmds));
+    return write_commands(cmds, (uint16_t)sizeof(cmds));
 }
 
 /**
@@ -444,9 +476,11 @@ void ssd1306::show_string(uint8_t line, uint8_t column, const char *string)
 {
     if(!string){return;}
 
-    for(uint8_t i = 0; string[i] != '\0'; i++)
+    while(*string != '\0' && column <= SSD1306_COLUMN_NUM)
     {
-        show_char(line, column + i, string[i]);
+        show_char(line, column, *string);
+        column++;
+        string++;
     }
 }
 
@@ -535,50 +569,60 @@ void ssd1306::show_bin_num(uint8_t line, uint8_t column, uint32_t number, uint8_
 }
 
 /**
- * @brief 写入单个命令
- *
- * @param command 命令值
- */
-void ssd1306::write_command(uint8_t command)
-{
-    HAL_GPIO_WritePin(dc_port, dc_pin, GPIO_PIN_RESET);
-    spi.cs_low(cs_port, cs_pin);
-    spi.tx(&command, 1);
-    spi.cs_high(cs_port, cs_pin);
-    HAL_GPIO_WritePin(dc_port, dc_pin, GPIO_PIN_SET);
-}
-
-/**
  * @brief 连续写入命令
  *
  * @param commands 命令缓冲区
- * @param len 命令长度
+ * @param size 命令长度
+ *
+ * @return SPI 总线结果
  */
-void ssd1306::write_commands(const uint8_t *commands, uint8_t len)
+spi_result ssd1306::write_commands(const uint8_t *commands, uint16_t size)
 {
-    if(!commands || !len){return;}
+    if(!commands || size == 0U)
+    {
+        return spi_result::INVALID_ARGUMENT;
+    }
 
     HAL_GPIO_WritePin(dc_port, dc_pin, GPIO_PIN_RESET);
-    spi.cs_low(cs_port, cs_pin);
-    spi.tx(commands, len);
-    spi.cs_high(cs_port, cs_pin);
+    spi_result result = spi.cs_low(cs_port, cs_pin);
+    if(result != spi_result::OK)
+    {
+        HAL_GPIO_WritePin(dc_port, dc_pin, GPIO_PIN_SET);
+        return result;
+    }
+
+    result = spi.tx(commands, size);
+    spi_result cs_result = spi.cs_high(cs_port, cs_pin);
     HAL_GPIO_WritePin(dc_port, dc_pin, GPIO_PIN_SET);
+
+    return result == spi_result::OK ? cs_result : result;
 }
 
 /**
  * @brief 连续写入数据
  *
  * @param data 数据缓冲区
- * @param len 数据长度
+ * @param size 数据长度
+ *
+ * @return SPI 总线结果
  */
-void ssd1306::write_data(const uint8_t *data, uint8_t len)
+spi_result ssd1306::write_data(const uint8_t *data, uint16_t size)
 {
-    if(!data || !len){return;}
+    if(!data || size == 0U)
+    {
+        return spi_result::INVALID_ARGUMENT;
+    }
 
     HAL_GPIO_WritePin(dc_port, dc_pin, GPIO_PIN_SET);
-    spi.cs_low(cs_port, cs_pin);
-    spi.tx(data, len);
-    spi.cs_high(cs_port, cs_pin);
+    spi_result result = spi.cs_low(cs_port, cs_pin);
+    if(result != spi_result::OK)
+    {
+        return result;
+    }
+
+    result = spi.tx(data, size);
+    spi_result cs_result = spi.cs_high(cs_port, cs_pin);
+    return result == spi_result::OK ? cs_result : result;
 }
 
 /**

@@ -1,4 +1,5 @@
 #include "devices/led_dev.h"
+#include "devices/ssd1306_dev.h"
 
 #ifdef DEBUG_MODE
 
@@ -14,4 +15,5 @@ extern "C" void start_init_all(void)
 #endif
 
     led_dev::init();
+    ssd1306_dev::init();
 }

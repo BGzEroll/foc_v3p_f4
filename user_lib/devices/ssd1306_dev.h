@@ -3,6 +3,11 @@
 
 #include "drivers/ssd1306.h"
 
-extern ssd1306 oled;
+namespace ssd1306_dev
+{
+    extern ssd1306 oled;
+
+    void init();
+}
 
 #endif
