@@ -29,7 +29,6 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-extern void start_init_all(void);
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -110,7 +109,6 @@ int main(void)
 
   /* Init scheduler */
   osKernelInitialize();  /* Call init function for freertos objects (in cmsis_os2.c) */
-  start_init_all();
   MX_FREERTOS_Init();
 
   /* Start scheduler */
