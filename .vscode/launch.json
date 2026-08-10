@@ -1,0 +1,39 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "STM32：启动并调试 Debug 固件",
+            "type": "cortex-debug",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/Debug/project.elf",
+            "preLaunchTask": "CMake：构建 Debug",
+            "servertype": "openocd",
+            "serverpath": "/usr/bin/openocd",
+            "gdbPath": "/usr/bin/gdb-multiarch",
+            "objdumpPath": "/usr/bin/arm-none-eabi-objdump",
+            "configFiles": [
+                "${workspaceFolder}/.vscode/openocd.cfg"
+            ],
+            "runToEntryPoint": "main",
+            "rtos": "FreeRTOS",
+            "showDevDebugOutput": "none"
+        },
+        {
+            "name": "STM32：附加到当前固件",
+            "type": "cortex-debug",
+            "request": "attach",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/Debug/project.elf",
+            "servertype": "openocd",
+            "serverpath": "/usr/bin/openocd",
+            "gdbPath": "/usr/bin/gdb-multiarch",
+            "objdumpPath": "/usr/bin/arm-none-eabi-objdump",
+            "configFiles": [
+                "${workspaceFolder}/.vscode/openocd.cfg"
+            ],
+            "rtos": "FreeRTOS",
+            "showDevDebugOutput": "none"
+        }
+    ]
+}

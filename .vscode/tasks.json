@@ -1,0 +1,47 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "CMake：配置 Debug",
+            "type": "process",
+            "command": "/usr/bin/cmake",
+            "args": [
+                "--preset",
+                "Debug"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "/usr/bin:/bin"
+                }
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake：构建 Debug",
+            "type": "process",
+            "command": "/usr/bin/cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "Debug",
+                "--parallel"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "/usr/bin:/bin"
+                }
+            },
+            "dependsOn": "CMake：配置 Debug",
+            "dependsOrder": "sequence",
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}
