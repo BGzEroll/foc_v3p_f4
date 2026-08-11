@@ -138,5 +138,7 @@ void as5600::process_raw_angle(uint16_t raw_count, uint32_t update_tick)
 
     previous_count = raw_count;
     previous_update_tick = update_tick;
-    current_sample.sample_id++;
+    current_sample.timestamp_ms =
+        update_tick * (uint32_t)portTICK_PERIOD_MS;
+    current_sample.sequence++;
 }

@@ -93,7 +93,8 @@ static uart_result send_as5600_telemetry()
     int message_length = snprintf(message,
         sizeof(message),
         "AS5600 angle=%c%lu.%02lu full=%c%lu.%02lu deg "
-        "velocity=%c%lu.%03lu rad/s raw=%u sample=%lu\r\n",
+        "velocity=%c%lu.%03lu rad/s raw=%u sequence=%lu "
+        "timestamp_ms=%lu\r\n",
         angle < 0 ? '-' : '+',
         (unsigned long)(angle_magnitude / 100U),
         (unsigned long)(angle_magnitude % 100U),
@@ -104,7 +105,8 @@ static uart_result send_as5600_telemetry()
         (unsigned long)(velocity_magnitude / 1000U),
         (unsigned long)(velocity_magnitude % 1000U),
         (unsigned int)sample.raw_count,
-        (unsigned long)sample.sample_id);
+        (unsigned long)sample.sequence,
+        (unsigned long)sample.timestamp_ms);
 
     if(message_length <= 0 ||
         (uint32_t)message_length >= sizeof(message))

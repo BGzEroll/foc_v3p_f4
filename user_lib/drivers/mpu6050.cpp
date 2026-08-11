@@ -202,8 +202,11 @@ i2c_result mpu6050::update()
         return result;
     }
 
-    process_raw_sample((uint32_t)xTaskGetTickCount());
-    current_sample.sample_id++;
+    uint32_t update_tick = (uint32_t)xTaskGetTickCount();
+    process_raw_sample(update_tick);
+    current_sample.timestamp_ms =
+        update_tick * (uint32_t)portTICK_PERIOD_MS;
+    current_sample.sequence++;
     return i2c_result::OK;
 }
 
