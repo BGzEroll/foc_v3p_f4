@@ -26,7 +26,7 @@
 
 两条总线均配置为 100 kHz、7 位地址模式，RX 和 TX 都使用 DMA Normal 模式。
 
-| 总线编号 | HAL 外设 | 引脚 | RX DMA | TX DMA | DMA/I2C Error IRQ 优先级 |
+| 总线编号 | HAL 外设 | 引脚 | RX DMA | TX DMA | DMA/I2C Event/Error IRQ 优先级 |
 |---:|---|---|---|---|---:|
 | `0` | I2C1 | PB6 SCL、PB7 SDA | DMA1 Stream0 Channel1 | DMA1 Stream6 Channel1 | 5 |
 | `1` | I2C2 | PB10 SCL、PB11 SDA | DMA1 Stream2 Channel7 | DMA1 Stream7 Channel7 | 5 |
@@ -43,7 +43,7 @@
 | `INCLUDE_xTaskGetSchedulerState` | 1 | 驱动可以检查调度器状态 |
 | `configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY` | 5 | 数字优先级 5～15 的 ISR 才能调用 FreeRTOS `FromISR` API |
 
-I2C DMA 和 Error IRQ 当前都设置为数字优先级 5，正好位于允许调用 `xSemaphoreGiveFromISR()` 的最高优先级边界。
+I2C DMA、Event IRQ 和 Error IRQ 当前都设置为数字优先级 5，正好位于允许调用 `xSemaphoreGiveFromISR()` 的最高优先级边界。
 
 ## 3. 软件框架
 
@@ -70,7 +70,7 @@ I2C DMA 和 Error IRQ 当前都设置为数字优先级 5，正好位于允许�
         ▼
 STM32 HAL + I2C 外设 + DMA
         │
-        │ DMA 完成或 I2C Error IRQ
+        │ DMA 完成或 I2C Event/Error IRQ
         ▼
 HAL 回调 → xSemaphoreGiveFromISR() → 唤醒原任务
 ```
@@ -236,7 +236,7 @@ i2c_result write_bytes(uint8_t device_address,
 
 1. 在任务临界区内清除 `transfer_active`。
 2. 调用 `HAL_I2C_DeInit()`。
-3. 调用 `HAL_I2C_Init()`，重新配置 I2C、DMA 链接和 Error IRQ。
+3. 调用 `HAL_I2C_Init()`，重新配置 I2C、DMA 链接和 Event/Error IRQ。
 4. 清除可能迟到的完成信号量。
 5. 最后释放总线 Mutex。
 
