@@ -1,3 +1,4 @@
+#include "debug/sensor_debug.h"
 #include "devices/as5600_dev.h"
 #include "devices/led_dev.h"
 #include "devices/mpu6050_dev.h"
@@ -11,5 +12,6 @@ extern "C" void start_init_all(void)
     as5600_dev::init();
     led_dev::init();
     mpu6050_dev::init();
+    sensor_debug::init();
     // ssd1306_dev::init();
 }
