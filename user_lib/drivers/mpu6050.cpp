@@ -2,7 +2,6 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
-
 #include <math.h>
 
 static constexpr uint8_t MPU6050_WHO_AM_I_REGISTER = 0x75;
@@ -334,7 +333,7 @@ void mpu6050::process_raw_sample(uint32_t update_tick)
             gyroscope_offset_rad_s[axis];
     }
 
-    // 保留原工程的轴向变换：传感器 Y 负方向为 X，传感器 X 为 Y。
+    // 轴向变换
     current_sample.acceleration_g[0] = -native_acceleration_g[1];
     current_sample.acceleration_g[1] = native_acceleration_g[0];
     current_sample.acceleration_g[2] = native_acceleration_g[2];

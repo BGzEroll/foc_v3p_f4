@@ -2,7 +2,6 @@
 #define MPU6050_H
 
 #include "bus/i2c_bus.h"
-
 #include <stdint.h>
 
 struct mpu6050_sample
