@@ -6,6 +6,7 @@
 
 struct mpu6050_sample
 {
+    uint32_t sample_id = 0U;
     float temperature_c = 0.0f;
     float acceleration_g[3]{};
     float angular_velocity_rad_s[3]{};

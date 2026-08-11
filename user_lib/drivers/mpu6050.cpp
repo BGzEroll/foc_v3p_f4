@@ -96,6 +96,7 @@ i2c_result mpu6050::init(bool calibrate_gyroscope)
     initialized = false;
     first_sample = true;
     previous_update_tick = 0U;
+    current_sample = {};
 
     i2c_result result = i2c.init();
     if(result != i2c_result::OK)
@@ -202,6 +203,7 @@ i2c_result mpu6050::update()
     }
 
     process_raw_sample((uint32_t)xTaskGetTickCount());
+    current_sample.sample_id++;
     return i2c_result::OK;
 }
 

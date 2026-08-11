@@ -6,11 +6,11 @@
 
 struct as5600_sample
 {
+    uint32_t sample_id = 0U;
     uint16_t raw_count = 0U;
     float angle_rad = 0.0f;
     float full_angle_rad = 0.0f;
     float angular_velocity_rad_s = 0.0f;
-    uint32_t sample_id = 0U;
 };
 
 class as5600
