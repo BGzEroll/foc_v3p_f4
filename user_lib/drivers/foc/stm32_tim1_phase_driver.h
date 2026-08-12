@@ -1,7 +1,7 @@
 #ifndef STM32_TIM1_PHASE_DRIVER_H
 #define STM32_TIM1_PHASE_DRIVER_H
 
-#include "drivers/foc/phase_driver.h"
+#include "phase_driver.h"
 #include "stm32f4xx_hal.h"
 
 struct stm32_tim1_phase_driver_config

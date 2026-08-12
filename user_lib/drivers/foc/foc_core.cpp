@@ -1,6 +1,6 @@
 #include "foc_core.h"
 
-#include "drivers/foc/foc_math.h"
+#include "foc_math.h"
 #include "system/topic.h"
 #include "FreeRTOS.h"
 #include <math.h>

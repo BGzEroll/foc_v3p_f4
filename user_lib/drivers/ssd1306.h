@@ -1,7 +1,7 @@
 #ifndef SSD1306_H
 #define SSD1306_H
 
-#include "drivers/bus/spi_bus.h"
+#include "bus/spi_bus.h"
 
 class ssd1306
 {

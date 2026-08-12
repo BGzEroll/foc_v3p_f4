@@ -1,7 +1,7 @@
 #ifndef FOC_MATH_H
 #define FOC_MATH_H
 
-#include "drivers/foc/foc_types.h"
+#include "foc_types.h"
 
 struct alpha_beta_value
 {

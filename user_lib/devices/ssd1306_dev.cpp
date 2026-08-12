@@ -1,4 +1,4 @@
-#include "devices/ssd1306_dev.h"
+#include "ssd1306_dev.h"
 
 #include "main.h"
 #include "FreeRTOS.h"

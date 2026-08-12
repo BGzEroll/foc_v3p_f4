@@ -1,7 +1,7 @@
 #ifndef STM32_TWO_SHUNT_CURRENT_SENSOR_H
 #define STM32_TWO_SHUNT_CURRENT_SENSOR_H
 
-#include "drivers/foc/sensors/current_sensor.h"
+#include "current_sensor.h"
 #include "stm32f4xx_hal.h"
 
 struct stm32_two_shunt_current_config

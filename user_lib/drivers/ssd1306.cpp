@@ -1,4 +1,4 @@
-#include "drivers/ssd1306.h"
+#include "ssd1306.h"
 
 #include "FreeRTOS.h"
 #include "task.h"

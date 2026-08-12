@@ -1,10 +1,10 @@
 #ifndef FOC_CORE_H
 #define FOC_CORE_H
 
-#include "drivers/foc/foc_types.h"
-#include "drivers/foc/phase_driver.h"
-#include "drivers/foc/sensors/current_sensor.h"
-#include "drivers/foc/sensors/rotor_sensor.h"
+#include "foc_types.h"
+#include "phase_driver.h"
+#include "sensors/current_sensor.h"
+#include "sensors/rotor_sensor.h"
 
 namespace foc_core
 {

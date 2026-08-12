@@ -1,8 +1,8 @@
 #ifndef AS5600_ROTOR_SENSOR_H
 #define AS5600_ROTOR_SENSOR_H
 
-#include "drivers/as5600.h"
-#include "drivers/foc/sensors/rotor_sensor.h"
+#include "../../as5600.h"
+#include "rotor_sensor.h"
 #include "system/topic.h"
 
 class as5600_rotor_sensor : public rotor_sensor

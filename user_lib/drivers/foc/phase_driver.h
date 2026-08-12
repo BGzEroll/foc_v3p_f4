@@ -1,7 +1,7 @@
 #ifndef PHASE_DRIVER_H
 #define PHASE_DRIVER_H
 
-#include "drivers/foc/foc_types.h"
+#include "foc_types.h"
 
 class phase_driver
 {

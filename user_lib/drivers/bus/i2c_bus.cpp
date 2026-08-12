@@ -65,104 +65,6 @@ static i2c_dev i2c_devs[] =
 static constexpr uint8_t I2C_DEV_COUNT =
     (uint8_t)(sizeof(i2c_devs) / sizeof(i2c_devs[0]));
 
-struct i2c_recovery_pins
-{
-    GPIO_TypeDef *port = nullptr;
-    uint16_t clock_pin = 0U;
-    uint16_t data_pin = 0U;
-};
-
-static constexpr uint8_t I2C_RECOVERY_CLOCK_PULSES = 9U;
-static constexpr uint32_t I2C_RECOVERY_DELAY_CYCLES = 512U;
-
-/**
- * @brief 产生总线恢复所需的短暂 GPIO 建立时间
- */
-static void recovery_delay()
-{
-    for(volatile uint32_t cycle = 0U;
-        cycle < I2C_RECOVERY_DELAY_CYCLES;
-        cycle++)
-    {
-        __NOP();
-    }
-}
-
-/**
- * @brief 根据 I2C 外设取得 CubeMX 配置的 SCL 和 SDA 引脚
- *
- * @param handle HAL I2C 句柄
- * @param pins 用于接收恢复引脚配置的对象
- *
- * @return 句柄对应受支持总线时返回 true
- */
-static bool get_recovery_pins(I2C_HandleTypeDef *handle,
-    i2c_recovery_pins &pins)
-{
-    if(handle && handle->Instance == I2C1)
-    {
-        pins.port = GPIOB;
-        pins.clock_pin = GPIO_PIN_6;
-        pins.data_pin = GPIO_PIN_7;
-        return true;
-    }
-
-    if(handle && handle->Instance == I2C2)
-    {
-        pins.port = GPIOB;
-        pins.clock_pin = GPIO_PIN_10;
-        pins.data_pin = GPIO_PIN_11;
-        return true;
-    }
-
-    return false;
-}
-
-/**
- * @brief 通过九个 SCL 脉冲和 STOP 条件释放被从机拉低的 SDA
- *
- * @param handle HAL I2C 句柄
- *
- * @return 恢复后 SCL 和 SDA 都为高电平时返回 true
- */
-static bool release_bus_lines(I2C_HandleTypeDef *handle)
-{
-    i2c_recovery_pins pins{};
-    if(!get_recovery_pins(handle, pins)){return false;}
-
-    GPIO_InitTypeDef gpio_config{};
-    gpio_config.Pin = pins.clock_pin | pins.data_pin;
-    gpio_config.Mode = GPIO_MODE_OUTPUT_OD;
-    gpio_config.Pull = GPIO_PULLUP;
-    gpio_config.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    HAL_GPIO_Init(pins.port, &gpio_config);
-    HAL_GPIO_WritePin(pins.port,
-        pins.clock_pin | pins.data_pin,
-        GPIO_PIN_SET);
-    recovery_delay();
-
-    for(uint8_t pulse = 0U;
-        pulse < I2C_RECOVERY_CLOCK_PULSES &&
-            HAL_GPIO_ReadPin(pins.port, pins.data_pin) == GPIO_PIN_RESET;
-        pulse++)
-    {
-        HAL_GPIO_WritePin(pins.port, pins.clock_pin, GPIO_PIN_RESET);
-        recovery_delay();
-        HAL_GPIO_WritePin(pins.port, pins.clock_pin, GPIO_PIN_SET);
-        recovery_delay();
-    }
-
-    HAL_GPIO_WritePin(pins.port, pins.data_pin, GPIO_PIN_RESET);
-    recovery_delay();
-    HAL_GPIO_WritePin(pins.port, pins.clock_pin, GPIO_PIN_SET);
-    recovery_delay();
-    HAL_GPIO_WritePin(pins.port, pins.data_pin, GPIO_PIN_SET);
-    recovery_delay();
-
-    return HAL_GPIO_ReadPin(pins.port, pins.clock_pin) == GPIO_PIN_SET &&
-        HAL_GPIO_ReadPin(pins.port, pins.data_pin) == GPIO_PIN_SET;
-}
-
 /**
  * @brief 将毫秒超时转换为 FreeRTOS tick
  *
@@ -490,12 +392,8 @@ i2c_result i2c_dev::transfer_bytes(i2c_transfer_direction direction,
  */
 bool i2c_dev::recover_bus()
 {
-    bool peripheral_deinitialized = HAL_I2C_DeInit(handle) == HAL_OK;
-    bool lines_released = peripheral_deinitialized &&
-        release_bus_lines(handle);
-    bool peripheral_initialized = HAL_I2C_Init(handle) == HAL_OK;
-    bool recovered = peripheral_deinitialized && lines_released &&
-        peripheral_initialized;
+    bool recovered = HAL_I2C_DeInit(handle) == HAL_OK &&
+        HAL_I2C_Init(handle) == HAL_OK;
 
     while(xSemaphoreTake(completion_semaphore, 0U) == pdTRUE)
     {

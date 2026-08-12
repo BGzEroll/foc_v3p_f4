@@ -1,7 +1,7 @@
 #ifndef CURRENT_SENSOR_H
 #define CURRENT_SENSOR_H
 
-#include "drivers/foc/foc_types.h"
+#include "../foc_types.h"
 
 class current_sensor
 {

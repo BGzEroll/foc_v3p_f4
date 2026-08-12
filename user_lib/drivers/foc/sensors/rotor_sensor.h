@@ -1,7 +1,7 @@
 #ifndef ROTOR_SENSOR_H
 #define ROTOR_SENSOR_H
 
-#include "drivers/foc/foc_types.h"
+#include "../foc_types.h"
 
 class rotor_sensor
 {
