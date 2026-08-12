@@ -7,7 +7,7 @@ readonly PYTHON_SCRIPT="${SCRIPT_DIR}/uart_terminal.py"
 readonly DEFAULT_PORT="${UART_PORT:-/dev/serial/by-id/usb-CMSIS-DAP_STM32_CMSIS-DAP_CMSIS-DAP-if01}"
 readonly DEFAULT_BAUD="${UART_BAUD:-460800}"
 readonly USBIP_REMOTE="${UART_USBIP_REMOTE:-192.168.114.137}"
-readonly USBIP_BUS_ID="${UART_USBIP_BUS_ID:-2-2}"
+readonly USBIP_BUS_ID="${UART_USBIP_BUS_ID:-1-2}"
 readonly USBIP_TOOL="/usr/sbin/usbip"
 
 has_custom_port=false

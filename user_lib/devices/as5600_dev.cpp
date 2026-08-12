@@ -9,7 +9,7 @@ static constexpr uint8_t AS5600_I2C_BUS_ID = 0U;
 static constexpr uint8_t AS5600_I2C_ADDRESS = 0x36U;
 static constexpr uint16_t AS5600_TASK_STACK_DEPTH = 512U;
 static constexpr UBaseType_t AS5600_TASK_PRIORITY = tskIDLE_PRIORITY + 3U;
-static constexpr uint32_t AS5600_UPDATE_PERIOD_MS = 5U;
+static constexpr uint32_t AS5600_UPDATE_PERIOD_MS = 1U;
 static constexpr uint32_t AS5600_RETRY_DELAY_MS = 1000U;
 
 static as5600 encoder(AS5600_I2C_BUS_ID, AS5600_I2C_ADDRESS);
