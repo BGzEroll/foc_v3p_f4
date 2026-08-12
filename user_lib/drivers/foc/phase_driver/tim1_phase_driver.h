@@ -1,10 +1,10 @@
-#ifndef STM32_TIM1_PHASE_DRIVER_H
-#define STM32_TIM1_PHASE_DRIVER_H
+#ifndef TIM1_PHASE_DRIVER_H
+#define TIM1_PHASE_DRIVER_H
 
 #include "phase_driver.h"
 #include "stm32f4xx_hal.h"
 
-struct stm32_tim1_phase_driver_config
+struct tim1_phase_driver_config
 {
     TIM_HandleTypeDef *timer = nullptr;
     GPIO_TypeDef *enable_port = nullptr;
@@ -13,11 +13,11 @@ struct stm32_tim1_phase_driver_config
     bool allow_output = false;
 };
 
-class stm32_tim1_phase_driver : public phase_driver
+class tim1_phase_driver : public phase_driver
 {
     public:
-        explicit stm32_tim1_phase_driver(
-            const stm32_tim1_phase_driver_config &config);
+        explicit tim1_phase_driver(
+            const tim1_phase_driver_config &config);
 
     public:
         foc_result init() override;
@@ -33,7 +33,7 @@ class stm32_tim1_phase_driver : public phase_driver
         void write_neutral_duty();
 
     private:
-        stm32_tim1_phase_driver_config config;
+        tim1_phase_driver_config config;
         bool initialized = false;
         bool output_enabled = false;
 };

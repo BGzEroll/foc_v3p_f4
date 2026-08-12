@@ -1,4 +1,4 @@
-#include "stm32_tim1_phase_driver.h"
+#include "tim1_phase_driver.h"
 
 #include <math.h>
 
@@ -7,8 +7,8 @@
  *
  * @param config TIM1、使能引脚和安全许可配置
  */
-stm32_tim1_phase_driver::stm32_tim1_phase_driver(
-    const stm32_tim1_phase_driver_config &config)
+tim1_phase_driver::tim1_phase_driver(
+    const tim1_phase_driver_config &config)
     : config(config)
 {
 }
@@ -18,7 +18,7 @@ stm32_tim1_phase_driver::stm32_tim1_phase_driver(
  *
  * @return 硬件配置有效时返回 OK
  */
-foc_result stm32_tim1_phase_driver::init()
+foc_result tim1_phase_driver::init()
 {
     initialized = false;
     output_enabled = false;
@@ -42,7 +42,7 @@ foc_result stm32_tim1_phase_driver::init()
  *
  * @return 首版安全配置会固定返回 DISABLED
  */
-foc_result stm32_tim1_phase_driver::enable_output_task()
+foc_result tim1_phase_driver::enable_output_task()
 {
     if(!initialized){return foc_result::NOT_INITIALIZED;}
     if(!config.allow_output){return foc_result::DISABLED;}
@@ -66,7 +66,7 @@ foc_result stm32_tim1_phase_driver::enable_output_task()
 /**
  * @brief 立即关闭门极使能和 TIM1 主输出
  */
-void stm32_tim1_phase_driver::disable_output()
+void tim1_phase_driver::disable_output()
 {
     write_enable_pin(false);
     if(config.timer && config.timer->Instance)
@@ -85,7 +85,7 @@ void stm32_tim1_phase_driver::disable_output()
  *
  * @return 输出已使能且占空比有效时返回 OK
  */
-foc_result stm32_tim1_phase_driver::write_duty_from_isr(
+foc_result tim1_phase_driver::write_duty_from_isr(
     const phase_duty &duty)
 {
     if(!initialized){return foc_result::NOT_INITIALIZED;}
@@ -114,7 +114,7 @@ foc_result stm32_tim1_phase_driver::write_duty_from_isr(
  *
  * @return 检测到 Break 标志时返回 true
  */
-bool stm32_tim1_phase_driver::fault_active_from_isr() const
+bool tim1_phase_driver::fault_active_from_isr() const
 {
     if(!config.timer || !config.timer->Instance){return true;}
     return (config.timer->Instance->SR & TIM_SR_BIF) != 0U;
@@ -125,7 +125,7 @@ bool stm32_tim1_phase_driver::fault_active_from_isr() const
  *
  * @param enabled 期望的逻辑使能状态
  */
-void stm32_tim1_phase_driver::write_enable_pin(bool enabled)
+void tim1_phase_driver::write_enable_pin(bool enabled)
 {
     bool pin_high = enabled == config.enable_active_high;
     if(pin_high)
@@ -141,7 +141,7 @@ void stm32_tim1_phase_driver::write_enable_pin(bool enabled)
 /**
  * @brief 把三相比较寄存器恢复为百分之五十中性占空比
  */
-void stm32_tim1_phase_driver::write_neutral_duty()
+void tim1_phase_driver::write_neutral_duty()
 {
     if(!config.timer || !config.timer->Instance){return;}
 

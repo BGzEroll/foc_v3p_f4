@@ -1,8 +1,8 @@
 #include "foc_dev.h"
 
 #include "drivers/foc/foc_core.h"
-#include "drivers/foc/sensors/as5600_rotor_sensor.h"
-#include "drivers/foc/stm32_tim1_phase_driver.h"
+#include "drivers/foc/phase_driver/tim1_phase_driver.h"
+#include "drivers/foc/sensors/encoder/as5600_rotor_sensor.h"
 #include "system/timebase.h"
 #include "main.h"
 #include "tim.h"
@@ -22,7 +22,7 @@ static constexpr uint32_t FOC_SAFETY_UPDATE_PERIOD_MS = 10U;
 
 static as5600_rotor_sensor rotor(AS5600_I2C_BUS_ID,
     AS5600_I2C_ADDRESS);
-static const stm32_tim1_phase_driver_config PHASE_DRIVER_CONFIG =
+static const tim1_phase_driver_config PHASE_DRIVER_CONFIG =
 {
     &htim1,
     MOTOR_EN_GPIO_Port,
@@ -30,7 +30,7 @@ static const stm32_tim1_phase_driver_config PHASE_DRIVER_CONFIG =
     true,
     false
 };
-static stm32_tim1_phase_driver phase_output(PHASE_DRIVER_CONFIG);
+static tim1_phase_driver phase_output(PHASE_DRIVER_CONFIG);
 
 /**
  * @brief 创建首版只监视、不允许功率输出的 FOC 配置

@@ -2,7 +2,7 @@
 #define FOC_CORE_H
 
 #include "foc_types.h"
-#include "phase_driver.h"
+#include "phase_driver/phase_driver.h"
 #include "sensors/current_sensor.h"
 #include "sensors/rotor_sensor.h"
 

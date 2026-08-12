@@ -3,7 +3,7 @@
 #include <math.h>
 
 /**
- * @brief 创建 STM32 ADC 双电阻相电流适配器
+ * @brief 创建 STM32 ADC 双分流电阻相电流适配器
  *
  * @param config ADC 句柄、电流换算和方向配置
  */
