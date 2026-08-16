@@ -22,6 +22,9 @@ Core/Src/freertos.c
             └── user_lib/devices/foc_dev.cpp
                 └── foc_dev::init()
 
+user_lib/system/sys_time.h/.cpp
+└── 读取由 CubeMX 配置并在 main.c 启动的 TIM5 微秒计数
+
 user_lib/drivers/foc/
 ├── foc_core.h/.cpp
 ├── foc_math.h/.cpp
@@ -80,7 +83,9 @@ flowchart LR
 
 ### 4.1 CubeMX 到用户代码
 
-系统启动时，CubeMX 生成的 `MX_FREERTOS_Init()` 在创建默认任务前调用：
+系统启动时，CubeMX 先调用 `MX_TIM5_Init()` 配置 1 MHz、32 位自由运行计数器，
+随后由 `sys_time.cpp` 内部的静态 `init()` 在时间 API 首次调用时启动计数。之后
+`MX_FREERTOS_Init()` 在创建默认任务前调用：
 
 ```text
 MX_FREERTOS_Init()
@@ -100,8 +105,6 @@ MX_FREERTOS_Init()
 
 ```text
 foc_dev::init()
-├── timebase::init()
-│   └── 启动 TIM5 作为 1 MHz、32 位自由运行微秒时基
 ├── foc_core::link_rotor_sensor(rotor)
 │   └── 绑定静态 AS5600 转子适配器
 ├── foc_core::link_phase_driver(phase_output)
@@ -223,7 +226,7 @@ foc_safety_task_entry()
 未来应由与 ADC 注入转换或 PWM 中点严格同步的中断调用，例如：
 
 ```cpp
-foc_core::run_control_from_isr(timebase::now_us());
+foc_core::run_control_from_isr(sys_time::get_us_tick());
 ```
 
 在真正接入前还需要确认 ADC 采样点、ISR 优先级、执行时间、TIM1 Break、功率级

@@ -1,6 +1,6 @@
 #include "as5600_rotor_sensor.h"
 
-#include "system/timebase.h"
+#include "system/sys_time.h"
 
 static constexpr uint8_t AS5600_RAW_ANGLE_REGISTER = 0x0CU;
 static constexpr uint16_t AS5600_RESOLUTION_COUNTS = 4096U;
@@ -135,7 +135,7 @@ foc_result as5600_rotor_sensor::read_and_publish_sample()
     raw_count &= AS5600_RESOLUTION_COUNTS - 1U;
 
     rotor_sample sample{};
-    process_raw_angle(raw_count, timebase::now_us(), sample);
+    process_raw_angle(raw_count, sys_time::get_us_tick(), sample);
     if(!sample_topic.publish(sample))
     {
         error_count++;

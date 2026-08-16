@@ -116,7 +116,7 @@ static uart_result send_mpu6050_sample(const mpu6050_sample &sample)
     int message_length = snprintf(message,
         sizeof(message),
         "MPU6050 roll=%c%lu.%02lu pitch=%c%lu.%02lu "
-        "yaw=%c%lu.%02lu deg sequence=%lu timestamp_ms=%lu\r\n",
+        "yaw=%c%lu.%02lu deg sequence=%lu timestamp_us=%lu\r\n",
         roll < 0 ? '-' : '+',
         (unsigned long)(roll_magnitude / 100U),
         (unsigned long)(roll_magnitude % 100U),
@@ -127,7 +127,7 @@ static uart_result send_mpu6050_sample(const mpu6050_sample &sample)
         (unsigned long)(yaw_magnitude / 100U),
         (unsigned long)(yaw_magnitude % 100U),
         (unsigned long)sample.sequence,
-        (unsigned long)sample.timestamp_ms);
+        (unsigned long)sample.timestamp_us);
 
     if(message_length < 0 || (uint32_t)message_length >= sizeof(message))
     {

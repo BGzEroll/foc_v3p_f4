@@ -3,7 +3,7 @@
 #include "drivers/foc/foc_core.h"
 #include "drivers/foc/phase_driver/tim1_phase_driver.h"
 #include "drivers/foc/sensors/encoder/as5600_rotor_sensor.h"
-#include "system/timebase.h"
+#include "system/sys_time.h"
 #include "main.h"
 #include "tim.h"
 #include "FreeRTOS.h"
@@ -94,7 +94,7 @@ static void foc_safety_task_entry(void *argument)
 
     while(true)
     {
-        foc_core::update_safety(timebase::now_us() / 1000U);
+        foc_core::update_safety(sys_time::get_us_tick() / 1000U);
         vTaskDelayUntil(&last_wake_time,
             pdMS_TO_TICKS(FOC_SAFETY_UPDATE_PERIOD_MS));
     }
@@ -105,8 +105,7 @@ static void foc_safety_task_entry(void *argument)
  */
 void foc_dev::init()
 {
-    if(!timebase::init() ||
-        foc_core::link_rotor_sensor(rotor) != foc_result::OK ||
+    if(foc_core::link_rotor_sensor(rotor) != foc_result::OK ||
         foc_core::link_phase_driver(phase_output) != foc_result::OK ||
         foc_core::init(make_monitor_config()) != foc_result::OK)
     {

@@ -540,7 +540,7 @@ foc_result foc_core::update_bus_sensors()
 /**
  * @brief 在低频 FreeRTOS 任务中检查慢速故障并发布调试快照
  *
- * @param timestamp_ms 当前 TIM5 时间换算的毫秒时间戳
+ * @param timestamp_ms 当前毫秒时间戳
  *
  * @return 本次安全检查结果
  */

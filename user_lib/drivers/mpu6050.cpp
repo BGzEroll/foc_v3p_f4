@@ -1,5 +1,6 @@
 #include "mpu6050.h"
 
+#include "system/sys_time.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include <math.h>
@@ -27,7 +28,7 @@ static constexpr float ACCELEROMETER_SCALE_LSB_PER_G = 16384.0f;
 static constexpr float GYROSCOPE_SCALE_LSB_PER_DPS = 65.5f;
 static constexpr float TEMPERATURE_SCALE_LSB_PER_C = 340.0f;
 static constexpr float TEMPERATURE_OFFSET_C = 36.53f;
-static constexpr float MAX_UPDATE_INTERVAL_SECONDS = 0.1f;
+static constexpr uint32_t MAX_UPDATE_INTERVAL_US = 100000U;
 
 static constexpr uint32_t RESET_DELAY_MS = 100U;
 static constexpr uint32_t WAKE_DELAY_MS = 10U;
@@ -95,7 +96,7 @@ i2c_result mpu6050::init(bool calibrate_gyroscope)
 {
     initialized = false;
     first_sample = true;
-    previous_update_tick = 0U;
+    previous_timestamp_us = 0U;
     current_sample = {};
 
     i2c_result result = i2c.init();
@@ -202,10 +203,9 @@ i2c_result mpu6050::update()
         return result;
     }
 
-    uint32_t update_tick = (uint32_t)xTaskGetTickCount();
-    process_raw_sample(update_tick);
-    current_sample.timestamp_ms =
-        update_tick * (uint32_t)portTICK_PERIOD_MS;
+    uint32_t timestamp_us = sys_time::get_us_tick();
+    process_raw_sample(timestamp_us);
+    current_sample.timestamp_us = timestamp_us;
     current_sample.sequence++;
     return i2c_result::OK;
 }
@@ -312,9 +312,9 @@ i2c_result mpu6050::calibrate_gyroscope_offset()
 /**
  * @brief 解码原始数据并更新三轴互补滤波角度
  *
- * @param update_tick 当前 FreeRTOS tick
+ * @param timestamp_us 当前微秒时间戳
  */
-void mpu6050::process_raw_sample(uint32_t update_tick)
+void mpu6050::process_raw_sample(uint32_t timestamp_us)
 {
     int16_t raw_temperature = decode_int16_be(&raw_sample[6]);
     current_sample.temperature_c = (float)raw_temperature /
@@ -365,21 +365,18 @@ void mpu6050::process_raw_sample(uint32_t update_tick)
         current_sample.angle_rad[1] = accelerometer_pitch_rad;
         current_sample.angle_rad[2] = 0.0f;
         first_sample = false;
-        previous_update_tick = update_tick;
+        previous_timestamp_us = timestamp_us;
         return;
     }
 
-    uint32_t elapsed_ticks = update_tick - previous_update_tick;
-    previous_update_tick = update_tick;
-    float elapsed_seconds = (float)elapsed_ticks /
-        (float)configTICK_RATE_HZ;
-
-    if(elapsed_seconds <= 0.0f ||
-        elapsed_seconds > MAX_UPDATE_INTERVAL_SECONDS)
+    uint32_t elapsed_us = timestamp_us - previous_timestamp_us;
+    previous_timestamp_us = timestamp_us;
+    if(elapsed_us == 0U || elapsed_us > MAX_UPDATE_INTERVAL_US)
     {
         return;
     }
 
+    float elapsed_seconds = (float)elapsed_us * 1.0e-6f;
     float gyroscope_weight = 1.0f - accelerometer_weight;
     current_sample.angle_rad[0] = gyroscope_weight *
         (current_sample.angle_rad[0] +
