@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-readonly PYTHON_SCRIPT="${SCRIPT_DIR}/uart_terminal.py"
+readonly PYTHON_SCRIPT="${SCRIPT_DIR}/uart_tcp_server.py"
 readonly DEFAULT_PORT="${UART_PORT:-/dev/serial/by-id/usb-CMSIS-DAP_STM32_CMSIS-DAP_CMSIS-DAP-if01}"
 readonly DEFAULT_BAUD="${UART_BAUD:-460800}"
 readonly USBIP_REMOTE="${UART_USBIP_REMOTE:-192.168.114.137}"
@@ -87,7 +87,7 @@ if [[ "${has_custom_port}" == false && ! -e "${DEFAULT_PORT}" ]]; then
     exit 1
 fi
 
-exec /usr/bin/python3 "${PYTHON_SCRIPT}" \
+exec /usr/bin/python3 -B "${PYTHON_SCRIPT}" \
     --port "${DEFAULT_PORT}" \
     --baud "${DEFAULT_BAUD}" \
     "$@"
