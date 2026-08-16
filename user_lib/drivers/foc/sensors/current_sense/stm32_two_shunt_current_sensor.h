@@ -26,6 +26,8 @@ class stm32_two_shunt_current_sensor : public current_sensor
         foc_result begin_calibration_task(uint32_t sample_count) override;
         foc_result finish_calibration_task() override;
         bool calibration_complete_task() const override;
+        foc_result set_directions_task(int8_t direction_a,
+            int8_t direction_b);
         foc_result read_conversion_from_isr(uint32_t timestamp_us,
             phase_current_sample &sample) override;
 

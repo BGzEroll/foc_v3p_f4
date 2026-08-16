@@ -12,9 +12,15 @@ namespace foc_core
     foc_result link_current_sensor(current_sensor &sensor);
     foc_result link_phase_driver(phase_driver &driver);
     foc_result set_target(const foc_target &target);
+    foc_result set_rotor_alignment(int8_t rotor_direction,
+        float electrical_zero_offset_rad);
+    foc_result begin_current_calibration(uint32_t sample_count);
+    foc_result finish_current_calibration();
+    bool current_calibration_complete();
     foc_result enable();
     void disable();
     foc_result clear_fault();
+    foc_result run_open_loop_from_task(uint32_t timestamp_us);
     foc_result run_control_from_isr(uint32_t timestamp_us);
     foc_result update_bus_sensors();
     foc_result update_safety(uint32_t timestamp_ms);

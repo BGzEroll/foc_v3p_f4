@@ -21,11 +21,12 @@ tim1_phase_driver::tim1_phase_driver(
 foc_result tim1_phase_driver::init()
 {
     initialized = false;
+    pwm_started = false;
     output_enabled = false;
 
     if(!config.timer || config.timer->Instance != TIM1 ||
         !config.enable_port || config.enable_pin == 0U ||
-        config.timer->Init.Period == 0U)
+        config.timer->Init.Period == 0U || !channels_valid())
     {
         return foc_result::INVALID_CONFIG;
     }
@@ -38,9 +39,9 @@ foc_result tim1_phase_driver::init()
 }
 
 /**
- * @brief 在明确许可时启动三相 PWM 并使能门极驱动
+ * @brief 在明确许可时启动或重新使能三相 PWM
  *
- * @return 首版安全配置会固定返回 DISABLED
+ * @return 输出启动结果
  */
 foc_result tim1_phase_driver::enable_output_task()
 {
@@ -49,12 +50,28 @@ foc_result tim1_phase_driver::enable_output_task()
     if(fault_active_from_isr()){return foc_result::DRIVER_FAULT;}
 
     write_neutral_duty();
-    if(HAL_TIM_PWM_Start(config.timer, TIM_CHANNEL_1) != HAL_OK ||
-        HAL_TIM_PWM_Start(config.timer, TIM_CHANNEL_2) != HAL_OK ||
-        HAL_TIM_PWM_Start(config.timer, TIM_CHANNEL_3) != HAL_OK)
+    if(!pwm_started)
     {
-        disable_output();
-        return foc_result::OUTPUT_FAULT;
+        if(HAL_TIM_PWM_Start(config.timer, TIM_CHANNEL_1) != HAL_OK)
+        {
+            disable_output();
+            return foc_result::OUTPUT_FAULT;
+        }
+        if(HAL_TIM_PWM_Start(config.timer, TIM_CHANNEL_2) != HAL_OK)
+        {
+            HAL_TIM_PWM_Stop(config.timer, TIM_CHANNEL_1);
+            disable_output();
+            return foc_result::OUTPUT_FAULT;
+        }
+        if(HAL_TIM_PWM_Start(config.timer, TIM_CHANNEL_3) != HAL_OK)
+        {
+            HAL_TIM_PWM_Stop(config.timer, TIM_CHANNEL_2);
+            HAL_TIM_PWM_Stop(config.timer, TIM_CHANNEL_1);
+            disable_output();
+            return foc_result::OUTPUT_FAULT;
+        }
+
+        pwm_started = true;
     }
 
     config.timer->Instance->BDTR |= TIM_BDTR_MOE;
@@ -100,12 +117,12 @@ foc_result tim1_phase_driver::write_duty_from_isr(
     }
 
     uint32_t period = config.timer->Init.Period + 1U;
-    config.timer->Instance->CCR1 = (uint32_t)(duty.phase_a *
-        (float)period);
-    config.timer->Instance->CCR2 = (uint32_t)(duty.phase_b *
-        (float)period);
-    config.timer->Instance->CCR3 = (uint32_t)(duty.phase_c *
-        (float)period);
+    write_compare(config.phase_a_channel,
+        (uint32_t)(duty.phase_a * (float)period));
+    write_compare(config.phase_b_channel,
+        (uint32_t)(duty.phase_b * (float)period));
+    write_compare(config.phase_c_channel,
+        (uint32_t)(duty.phase_c * (float)period));
     return foc_result::OK;
 }
 
@@ -118,6 +135,65 @@ bool tim1_phase_driver::fault_active_from_isr() const
 {
     if(!config.timer || !config.timer->Instance){return true;}
     return (config.timer->Instance->SR & TIM_SR_BIF) != 0U;
+}
+
+/**
+ * @brief 校验三个逻辑相通道是否完整且互不重复
+ *
+ * @return 通道恰好覆盖一至三时返回 true
+ */
+bool tim1_phase_driver::channels_valid() const
+{
+    uint8_t channel_mask = 0U;
+    const uint8_t channels[3] =
+    {
+        config.phase_a_channel,
+        config.phase_b_channel,
+        config.phase_c_channel
+    };
+
+    for(uint8_t channel : channels)
+    {
+        if(channel < 1U || channel > 3U)
+        {
+            return false;
+        }
+
+        uint8_t channel_bit = (uint8_t)(1U << (channel - 1U));
+        if((channel_mask & channel_bit) != 0U)
+        {
+            return false;
+        }
+
+        channel_mask |= channel_bit;
+    }
+
+    return channel_mask == 0x07U;
+}
+
+/**
+ * @brief 按配置的通道编号写入比较值
+ *
+ * @param channel 通道编号
+ * @param compare 比较值
+ */
+void tim1_phase_driver::write_compare(uint8_t channel,
+    uint32_t compare)
+{
+    switch(channel)
+    {
+        case 1U:
+            config.timer->Instance->CCR1 = compare;
+            break;
+        case 2U:
+            config.timer->Instance->CCR2 = compare;
+            break;
+        case 3U:
+            config.timer->Instance->CCR3 = compare;
+            break;
+        default:
+            break;
+    }
 }
 
 /**

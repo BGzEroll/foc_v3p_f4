@@ -192,16 +192,28 @@ int main()
         "initialize control mode");
     failure_count += expect(foc_core::update_bus_sensors() ==
         foc_result::OK, "initialize rotor in task");
+    failure_count += expect(foc_core::set_rotor_alignment(-1, 0.3f) ==
+        foc_result::OK, "set rotor alignment while disabled");
+    failure_count += expect(foc_core::begin_current_calibration(16U) ==
+        foc_result::OK && driver.enabled,
+        "calibrate with neutral output enabled");
+    failure_count += expect(foc_core::finish_current_calibration() ==
+        foc_result::OK && driver.enabled,
+        "keep neutral output active after calibration");
 
     foc_target target{};
-    target.mode = foc_control_mode::VOLTAGE;
+    target.mode = foc_control_mode::OPEN_LOOP_VOLTAGE;
     target.d_axis_voltage_v = 1.0f;
     target.q_axis_voltage_v = 2.0f;
+    target.electrical_angle_rad = 0.7f;
     target.timestamp_ms = 1U;
     failure_count += expect(foc_core::set_target(target) == foc_result::OK,
         "set voltage target");
     failure_count += expect(foc_core::enable() == foc_result::OK,
         "enable control");
+    failure_count += expect(foc_core::set_rotor_alignment(1, 0.0f) ==
+        foc_result::INVALID_STATE,
+        "reject rotor alignment while running");
     failure_count += expect(foc_core::run_control_from_isr(1100U) ==
         foc_result::OK, "run valid control cycle");
     failure_count += expect(driver.write_count == 1U &&

@@ -19,7 +19,8 @@ enum class foc_result : uint8_t
     SAMPLE_STALE,
     CALIBRATING,
     DRIVER_FAULT,
-    OUTPUT_FAULT
+    OUTPUT_FAULT,
+    ROTOR_ALIGNMENT_FAILED
 };
 
 enum class foc_state : uint8_t
@@ -34,6 +35,7 @@ enum class foc_state : uint8_t
 enum class foc_control_mode : uint8_t
 {
     DISABLED = 0,
+    OPEN_LOOP_VOLTAGE,
     VOLTAGE,
     CURRENT
 };
@@ -75,6 +77,10 @@ struct phase_current_sample
 {
     uint32_t sequence = 0U;
     uint32_t timestamp_us = 0U;
+    uint16_t raw_count_a = 0U;
+    uint16_t raw_count_b = 0U;
+    float offset_count_a = 0.0f;
+    float offset_count_b = 0.0f;
     float current_a = 0.0f;
     float current_b = 0.0f;
     float current_c = 0.0f;
@@ -92,16 +98,20 @@ struct foc_target
 {
     uint32_t sequence = 0U;
     uint32_t timestamp_ms = 0U;
+    uint32_t electrical_angle_timestamp_us = 0U;
     foc_control_mode mode = foc_control_mode::DISABLED;
     float d_axis_current_a = 0.0f;
     float q_axis_current_a = 0.0f;
     float d_axis_voltage_v = 0.0f;
     float q_axis_voltage_v = 0.0f;
+    float electrical_angle_rad = 0.0f;
+    float electrical_velocity_rad_s = 0.0f;
 };
 
 struct foc_config
 {
     bool monitor_only = true;
+    bool open_loop_control_from_task = false;
     uint8_t pole_pairs = 0U;
     int8_t rotor_direction = 1;
     float electrical_zero_offset_rad = 0.0f;
@@ -115,6 +125,7 @@ struct foc_config
     uint32_t command_timeout_ms = 100U;
     uint32_t communication_error_limit = 10U;
     uint32_t telemetry_divider = 20U;
+    uint16_t control_isr_divider = 1U;
     pi_config d_axis_pi{};
     pi_config q_axis_pi{};
 };

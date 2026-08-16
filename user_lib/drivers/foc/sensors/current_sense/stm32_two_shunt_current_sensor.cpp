@@ -94,6 +94,31 @@ bool stm32_two_shunt_current_sensor::calibration_complete_task() const
 }
 
 /**
+ * @brief 更新两个相电流通道的测量极性
+ *
+ * @param direction_a A 相测量方向
+ * @param direction_b B 相测量方向
+ *
+ * @return 两个方向均为正一或负一时返回 OK
+ */
+foc_result stm32_two_shunt_current_sensor::set_directions_task(
+    int8_t direction_a,
+    int8_t direction_b)
+{
+    if(!initialized){return foc_result::NOT_INITIALIZED;}
+    if(calibrating){return foc_result::INVALID_STATE;}
+    if((direction_a != 1 && direction_a != -1) ||
+        (direction_b != 1 && direction_b != -1))
+    {
+        return foc_result::INVALID_ARGUMENT;
+    }
+
+    config.direction_a = direction_a;
+    config.direction_b = direction_b;
+    return foc_result::OK;
+}
+
+/**
  * @brief 从 ADC 注入序列寄存器读取并换算本周期三相电流
  *
  * @param timestamp_us 本次同步采样时间戳
@@ -126,6 +151,10 @@ foc_result stm32_two_shunt_current_sensor::read_conversion_from_isr(
 
     sample.sequence = ++sequence;
     sample.timestamp_us = timestamp_us;
+    sample.raw_count_a = (uint16_t)raw_a;
+    sample.raw_count_b = (uint16_t)raw_b;
+    sample.offset_count_a = offset_a;
+    sample.offset_count_b = offset_b;
     sample.current_a = ((float)raw_a - offset_a) *
         config.ampere_per_count_a * (float)config.direction_a;
     sample.current_b = ((float)raw_b - offset_b) *
