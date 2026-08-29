@@ -179,6 +179,44 @@ static i2c_dev *get_dev(I2C_HandleTypeDef *handle)
 }
 
 /**
+ * @brief 根据 I2C 外设获取总线清理所需的 GPIO 引脚
+ *
+ * @param target_handle I2C 外设句柄
+ * @param gpio_port 用于输出时钟和数据的 GPIO 端口
+ * @param scl_pin SCL 引脚
+ * @param sda_pin SDA 引脚
+ *
+ * @return 找到对应引脚配置时返回 true
+ */
+static bool get_i2c_gpio_config(I2C_HandleTypeDef *target_handle,
+    GPIO_TypeDef *&gpio_port,
+    uint16_t &scl_pin,
+    uint16_t &sda_pin)
+{
+    if(!target_handle)
+    {
+        return false;
+    }
+
+    gpio_port = GPIOB;
+    if(target_handle->Instance == I2C1)
+    {
+        scl_pin = GPIO_PIN_6;
+        sda_pin = GPIO_PIN_7;
+        return true;
+    }
+
+    if(target_handle->Instance == I2C2)
+    {
+        scl_pin = GPIO_PIN_10;
+        sda_pin = GPIO_PIN_11;
+        return true;
+    }
+
+    return false;
+}
+
+/**
  * @brief 创建物理 I2C 总线管理对象
  *
  * @param handle HAL I2C 句柄
@@ -203,6 +241,11 @@ i2c_result i2c_dev::init()
     if(!handle || !handle->Instance || !handle->hdmarx || !handle->hdmatx)
     {
         return i2c_result::INIT_FAILED;
+    }
+
+    if(!recover_bus())
+    {
+        return i2c_result::RECOVERY_FAILED;
     }
 
     mutex = xSemaphoreCreateMutexStatic(&mutex_storage);
@@ -392,12 +435,75 @@ i2c_result i2c_dev::transfer_bytes(i2c_transfer_direction direction,
  */
 bool i2c_dev::recover_bus()
 {
-    bool recovered = HAL_I2C_DeInit(handle) == HAL_OK &&
-        HAL_I2C_Init(handle) == HAL_OK;
-
-    while(xSemaphoreTake(completion_semaphore, 0U) == pdTRUE)
+    GPIO_TypeDef *gpio_port = nullptr;
+    uint16_t scl_pin = 0U;
+    uint16_t sda_pin = 0U;
+    if(!get_i2c_gpio_config(handle,
+        gpio_port,
+        scl_pin,
+        sda_pin))
     {
+        return false;
     }
+
+    if(HAL_I2C_DeInit(handle) != HAL_OK)
+    {
+        return false;
+    }
+
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+
+    GPIO_InitTypeDef gpio_init = {0};
+    gpio_init.Pin = scl_pin | sda_pin;
+    gpio_init.Mode = GPIO_MODE_OUTPUT_OD;
+    gpio_init.Pull = GPIO_NOPULL;
+    gpio_init.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    HAL_GPIO_Init(gpio_port, &gpio_init);
+
+    // 释放总线；若 SDA 被从设备拉低，则发送最多 9 个时钟脉冲。
+    HAL_GPIO_WritePin(gpio_port,
+        scl_pin | sda_pin,
+        GPIO_PIN_SET);
+    HAL_Delay(1U);
+    for(uint8_t pulse = 0U; pulse < 9U; pulse++)
+    {
+        if(HAL_GPIO_ReadPin(gpio_port, sda_pin) == GPIO_PIN_SET)
+        {
+            break;
+        }
+
+        HAL_GPIO_WritePin(gpio_port, scl_pin, GPIO_PIN_RESET);
+        HAL_Delay(1U);
+        HAL_GPIO_WritePin(gpio_port, scl_pin, GPIO_PIN_SET);
+        HAL_Delay(1U);
+    }
+
+    // SCL 为高时先拉低再释放 SDA，形成一个明确的 STOP 条件。
+    HAL_GPIO_WritePin(gpio_port, scl_pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(gpio_port, sda_pin, GPIO_PIN_RESET);
+    HAL_Delay(1U);
+    HAL_GPIO_WritePin(gpio_port, scl_pin, GPIO_PIN_SET);
+    HAL_Delay(1U);
+    HAL_GPIO_WritePin(gpio_port, sda_pin, GPIO_PIN_SET);
+    HAL_Delay(1U);
+
+    bool lines_released =
+        HAL_GPIO_ReadPin(gpio_port, scl_pin) == GPIO_PIN_SET &&
+        HAL_GPIO_ReadPin(gpio_port, sda_pin) == GPIO_PIN_SET;
+    HAL_GPIO_DeInit(gpio_port, scl_pin | sda_pin);
+
+    bool i2c_initialized = HAL_I2C_Init(handle) == HAL_OK;
+    bool recovered = lines_released && i2c_initialized;
+
+    if(completion_semaphore)
+    {
+        while(xSemaphoreTake(completion_semaphore, 0U) == pdTRUE)
+        {
+        }
+    }
+
+    transfer_active = false;
+    transfer_result = i2c_result::OK;
 
     if(!recovered)
     {

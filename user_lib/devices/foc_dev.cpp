@@ -89,7 +89,7 @@ static as5600_rotor_sensor rotor(AS5600_I2C_BUS_ID,
     AS5600_I2C_ADDRESS);
 static const stm32_two_shunt_current_config CURRENT_SENSOR_CONFIG =
 {
-    &hadc1,
+    &hadc2,
     CURRENT_AMPERE_PER_COUNT,
     CURRENT_AMPERE_PER_COUNT,
     1,
@@ -168,17 +168,17 @@ static bool start_current_sampling()
     HAL_NVIC_SetPriority(ADC_IRQn, 5U, 0U);
     HAL_NVIC_EnableIRQ(ADC_IRQn);
 
-    if(HAL_ADCEx_InjectedStart_IT(&hadc1) != HAL_OK)
+    if(HAL_ADCEx_InjectedStart_IT(&hadc2) != HAL_OK)
     {
         HAL_NVIC_DisableIRQ(ADC_IRQn);
-        HAL_ADCEx_InjectedStop_IT(&hadc1);
+        HAL_ADCEx_InjectedStop_IT(&hadc2);
         return false;
     }
 
     if(HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_4) != HAL_OK)
     {
         HAL_NVIC_DisableIRQ(ADC_IRQn);
-        HAL_ADCEx_InjectedStop_IT(&hadc1);
+        HAL_ADCEx_InjectedStop_IT(&hadc2);
         return false;
     }
 
@@ -1350,7 +1350,7 @@ bool foc_dev::peek_commissioning_status(
  */
 extern "C" void ADC_IRQHandler(void)
 {
-    HAL_ADC_IRQHandler(&hadc1);
+    HAL_ADC_IRQHandler(&hadc2);
 }
 
 /**
@@ -1361,7 +1361,7 @@ extern "C" void ADC_IRQHandler(void)
 extern "C" void HAL_ADCEx_InjectedConvCpltCallback(
     ADC_HandleTypeDef *adc)
 {
-    if(adc && adc->Instance == ADC1)
+    if(adc && adc->Instance == ADC2)
     {
         foc_core::run_control_from_isr(sys_time::get_us_tick());
     }
