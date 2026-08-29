@@ -99,7 +99,7 @@ static stm32_two_shunt_current_sensor phase_current(
     CURRENT_SENSOR_CONFIG);
 static const tim1_phase_driver_config PHASE_DRIVER_CONFIG =
 {
-    &htim1,
+    &htim8,
     MOTOR_EN_GPIO_Port,
     MOTOR_EN_Pin,
     3U,
@@ -168,12 +168,17 @@ static bool start_current_sampling()
     HAL_NVIC_SetPriority(ADC_IRQn, 5U, 0U);
     HAL_NVIC_EnableIRQ(ADC_IRQn);
 
-    if(HAL_ADCEx_InjectedStart_IT(&hadc1) != HAL_OK ||
-        HAL_TIM_Base_Start(&htim1) != HAL_OK)
+    if(HAL_ADCEx_InjectedStart_IT(&hadc1) != HAL_OK)
     {
         HAL_NVIC_DisableIRQ(ADC_IRQn);
         HAL_ADCEx_InjectedStop_IT(&hadc1);
-        HAL_TIM_Base_Stop(&htim1);
+        return false;
+    }
+
+    if(HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_4) != HAL_OK)
+    {
+        HAL_NVIC_DisableIRQ(ADC_IRQn);
+        HAL_ADCEx_InjectedStop_IT(&hadc1);
         return false;
     }
 

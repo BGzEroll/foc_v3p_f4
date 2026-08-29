@@ -3,9 +3,9 @@
 #include <math.h>
 
 /**
- * @brief 创建 TIM1 三相 PWM 驱动适配器
+ * @brief 创建高级定时器三相 PWM 驱动适配器
  *
- * @param config TIM1、使能引脚和安全许可配置
+ * @param config TIM1/TIM8、使能引脚和安全许可配置
  */
 tim1_phase_driver::tim1_phase_driver(
     const tim1_phase_driver_config &config)
@@ -24,7 +24,8 @@ foc_result tim1_phase_driver::init()
     pwm_started = false;
     output_enabled = false;
 
-    if(!config.timer || config.timer->Instance != TIM1 ||
+    if(!config.timer || (config.timer->Instance != TIM1 &&
+        config.timer->Instance != TIM8) ||
         !config.enable_port || config.enable_pin == 0U ||
         config.timer->Init.Period == 0U || !channels_valid())
     {
@@ -81,7 +82,7 @@ foc_result tim1_phase_driver::enable_output_task()
 }
 
 /**
- * @brief 立即关闭门极使能和 TIM1 主输出
+ * @brief 立即关闭门极使能和高级定时器主输出
  */
 void tim1_phase_driver::disable_output()
 {
@@ -127,7 +128,7 @@ foc_result tim1_phase_driver::write_duty_from_isr(
 }
 
 /**
- * @brief 查询 TIM1 硬件 Break 标志
+ * @brief 查询高级定时器硬件 Break 标志
  *
  * @return 检测到 Break 标志时返回 true
  */
