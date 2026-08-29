@@ -703,28 +703,31 @@ foc_result foc_core::run_control_from_isr(uint32_t timestamp_us)
         return foc_result::OK;
     }
 
-    rotor_sample rotor{};
-    foc_result rotor_result = core_context.rotor->read_from_isr(rotor);
-    if(rotor_result != foc_result::OK || !rotor.valid)
-    {
-        latch_fault(foc_fault_mask(foc_fault::ROTOR_NOT_READY));
-        return rotor_result;
-    }
-
-    uint32_t rotor_age_us = sample_age_us(timestamp_us,
-        rotor.timestamp_us);
-    if(rotor_age_us > core_context.config.rotor_hard_timeout_us)
-    {
-        latch_fault(foc_fault_mask(foc_fault::ROTOR_STALE));
-        return foc_result::SAMPLE_STALE;
-    }
-
     foc_target target{};
     if(!target_topic.peek_from_isr(target) ||
         target.mode == foc_control_mode::DISABLED)
     {
         latch_fault(foc_fault_mask(foc_fault::COMMAND_TIMEOUT));
         return foc_result::NOT_READY;
+    }
+
+    rotor_sample rotor{};
+    foc_result rotor_result = core_context.rotor->read_from_isr(rotor);
+    uint32_t rotor_age_us = rotor_result == foc_result::OK && rotor.valid ?
+        sample_age_us(timestamp_us, rotor.timestamp_us) : 0U;
+    if(target.mode != foc_control_mode::OPEN_LOOP_VOLTAGE)
+    {
+        if(rotor_result != foc_result::OK || !rotor.valid)
+        {
+            latch_fault(foc_fault_mask(foc_fault::ROTOR_NOT_READY));
+            return rotor_result;
+        }
+
+        if(rotor_age_us > core_context.config.rotor_hard_timeout_us)
+        {
+            latch_fault(foc_fault_mask(foc_fault::ROTOR_STALE));
+            return foc_result::SAMPLE_STALE;
+        }
     }
 
     float mechanical_angle = rotor.mechanical_angle_rad;

@@ -66,6 +66,7 @@ static constexpr float PHASE_VECTOR_RATIO_MINIMUM = 0.25f;
 static constexpr float PHASE_VECTOR_RATIO_MAXIMUM = 0.75f;
 static constexpr float PHASE_VECTOR_EQUAL_RATIO_MINIMUM = 0.50f;
 static constexpr float PHASE_VECTOR_EQUAL_RATIO_MAXIMUM = 2.00f;
+static constexpr bool ALLOW_CURRENT_LOOP_WITHOUT_PHASE_VECTOR_CHECK = true;
 static constexpr float ROTOR_ALIGNMENT_MINIMUM_MOVE_RAD = 0.03f;
 static constexpr float D_AXIS_VERIFY_TARGET_A = 0.05f;
 static constexpr float Q_AXIS_VERIFY_TARGET_A = 0.03f;
@@ -584,6 +585,10 @@ static foc_result update_open_loop_target(uint32_t timestamp_ms,
         electrical_velocity_rad_s);
 }
 
+static foc_result start_alignment_stage(foc_commissioning_stage stage,
+    uint32_t timestamp_ms,
+    float electrical_angle_rad);
+
 /**
  * @brief 完成正向开环验证并进入停机间隔
  *
@@ -607,11 +612,13 @@ static void finish_open_loop_forward(const foc_snapshot &snapshot,
 }
 
 /**
- * @brief 完成反向开环验证并关闭功率输出
+ * @brief 完成反向开环验证并进入静态矢量对齐
  *
  * @param snapshot 最新 FOC 快照
+ * @param timestamp_ms 当前时间戳
  */
-static void finish_open_loop_reverse(const foc_snapshot &snapshot)
+static void finish_open_loop_reverse(const foc_snapshot &snapshot,
+    uint32_t timestamp_ms)
 {
     commissioning_status.open_loop_reverse_delta_rad =
         snapshot.rotor.full_angle_rad -
@@ -626,12 +633,22 @@ static void finish_open_loop_reverse(const foc_snapshot &snapshot)
         forward_delta * reverse_delta < 0.0f;
 
     foc_core::disable();
-    commissioning_status.stage = commissioning_status.open_loop_motion_detected ?
-        foc_commissioning_stage::COMPLETE :
-        foc_commissioning_stage::FAILED;
-    commissioning_status.result = commissioning_status.open_loop_motion_detected ?
-        foc_result::OK : foc_result::ROTOR_ALIGNMENT_FAILED;
-    publish_commissioning_status();
+    if(!commissioning_status.open_loop_motion_detected)
+    {
+        commissioning_status.stage = foc_commissioning_stage::FAILED;
+        commissioning_status.result = foc_result::ROTOR_ALIGNMENT_FAILED;
+        publish_commissioning_status();
+        return;
+    }
+
+    foc_result alignment_result = start_alignment_stage(
+        foc_commissioning_stage::ALIGN_FIRST,
+        timestamp_ms,
+        FIRST_ALIGNMENT_ANGLE_RAD);
+    if(alignment_result != foc_result::OK)
+    {
+        fail_commissioning(alignment_result);
+    }
 }
 
 /**
@@ -763,7 +780,8 @@ static void finish_third_phase_vector(const foc_snapshot &snapshot,
     foc_core::disable();
     commissioning_status.phase_vector_check_passed =
         phase_vector_results_valid();
-    if(!commissioning_status.phase_vector_check_passed)
+    if(!commissioning_status.phase_vector_check_passed &&
+        !ALLOW_CURRENT_LOOP_WITHOUT_PHASE_VECTOR_CHECK)
     {
         fail_commissioning(foc_result::SENSOR_ERROR);
         return;
@@ -1051,7 +1069,7 @@ static void update_commissioning(const foc_snapshot &snapshot,
                 OPEN_LOOP_HOLD_TIME_MS + OPEN_LOOP_RUN_TIME_MS &&
                 snapshot_available && snapshot.rotor.valid)
             {
-                finish_open_loop_reverse(snapshot);
+                finish_open_loop_reverse(snapshot, timestamp_ms);
             }
             break;
 
