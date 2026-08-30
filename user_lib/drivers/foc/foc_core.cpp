@@ -73,63 +73,6 @@ static bool finite_non_negative(float value)
 }
 
 /**
- * @brief 校验 FOC 公共配置
- *
- * @param config 待校验配置
- *
- * @return 配置满足监视或运行模式约束时返回 true
- */
-static bool valid_config(const foc_config &config)
-{
-    if((config.rotor_direction != 1 && config.rotor_direction != -1) ||
-        !isfinite(config.electrical_zero_offset_rad) ||
-        !isfinite(config.control_period_s) ||
-        config.control_period_s <= 0.0f ||
-        config.rotor_extrapolation_limit_us >
-            config.rotor_hard_timeout_us ||
-        config.rotor_hard_timeout_us == 0 ||
-        config.rotor_slow_timeout_us < config.rotor_hard_timeout_us ||
-        config.communication_error_limit == 0 ||
-        config.telemetry_divider == 0 ||
-        config.control_isr_divider == 0)
-    {
-        return false;
-    }
-
-    if(config.monitor_only){return true;}
-
-    return config.pole_pairs > 0 &&
-        isfinite(config.bus_voltage_v) && config.bus_voltage_v > 0.0f &&
-        isfinite(config.voltage_limit_v) && config.voltage_limit_v > 0.0f &&
-        config.voltage_limit_v <= config.bus_voltage_v &&
-        isfinite(config.max_phase_current_a) &&
-        config.max_phase_current_a > 0.0f &&
-        finite_non_negative(config.d_axis_pi.proportional_gain) &&
-        finite_non_negative(config.d_axis_pi.integral_gain) &&
-        finite_non_negative(config.d_axis_pi.integral_limit) &&
-        finite_non_negative(config.q_axis_pi.proportional_gain) &&
-        finite_non_negative(config.q_axis_pi.integral_gain) &&
-        finite_non_negative(config.q_axis_pi.integral_limit);
-}
-
-/**
- * @brief 校验运行目标内所有浮点字段
- *
- * @param target 待校验目标
- *
- * @return 所有字段均为有限值时返回 true
- */
-static bool valid_target(const foc_target &target)
-{
-    return isfinite(target.d_axis_current_a) &&
-        isfinite(target.q_axis_current_a) &&
-        isfinite(target.d_axis_voltage_v) &&
-        isfinite(target.q_axis_voltage_v) &&
-        isfinite(target.electrical_angle_rad) &&
-        isfinite(target.electrical_velocity_rad_s);
-}
-
-/**
  * @brief 锁存故障并立即关闭硬件输出
  *
  * @param fault_flags 本次新增故障位
@@ -149,21 +92,6 @@ static void latch_fault(uint32_t fault_flags)
 }
 
 /**
- * @brief 判断三相电流是否超过配置绝对值上限
- *
- * @param current 三相电流样本
- *
- * @return 任一相过流时返回 true
- */
-static bool over_current(const phase_current_sample &current)
-{
-    float limit = core_context.config.max_phase_current_a;
-    return fabsf(current.current_a) > limit ||
-        fabsf(current.current_b) > limit ||
-        fabsf(current.current_c) > limit;
-}
-
-/**
  * @brief 计算允许样本在任务抢占下略晚于观察时刻的无符号年龄
  *
  * @param timestamp_us 当前观察时间戳
@@ -176,28 +104,6 @@ static uint32_t sample_age_us(uint32_t timestamp_us,
 {
     uint32_t elapsed = timestamp_us - sample_timestamp_us;
     return elapsed <= INT32_MAX ? elapsed : 0;
-}
-
-/**
- * @brief 发布控制 ISR 的轻量遥测
- *
- * @param telemetry 本周期遥测数据
- */
-static void publish_telemetry_from_isr(
-    const control_telemetry &telemetry)
-{
-    if(core_context.control_sequence %
-        core_context.config.telemetry_divider != 0)
-    {
-        return;
-    }
-
-    BaseType_t higher_priority_task_woken = pdFALSE;
-    if(!telemetry_topic.publish_from_isr(telemetry,
-        higher_priority_task_woken))
-    {
-        latch_fault(foc_fault_mask(foc_fault::INTERNAL));
-    }
 }
 
 /**
@@ -287,7 +193,17 @@ foc_result foc_core::link_phase_driver(phase_driver &driver)
 foc_result foc_core::set_target(const foc_target &target)
 {
     if(!core_context.initialized){return foc_result::NOT_INITIALIZED;}
-    if(!valid_target(target)){return foc_result::INVALID_ARGUMENT;}
+
+    // 目标会被控制 ISR 直接读取，统一拦截 NaN/Inf，避免无效值进入控制链。
+    if(!isfinite(target.d_axis_current_a) ||
+        !isfinite(target.q_axis_current_a) ||
+        !isfinite(target.d_axis_voltage_v) ||
+        !isfinite(target.q_axis_voltage_v) ||
+        !isfinite(target.electrical_angle_rad) ||
+        !isfinite(target.electrical_velocity_rad_s))
+    {
+        return foc_result::INVALID_ARGUMENT;
+    }
 
     foc_target pending_target = target;
     pending_target.sequence = ++core_context.target_sequence;
@@ -543,7 +459,11 @@ foc_result foc_core::run_control_from_isr(uint32_t timestamp_us)
         return foc_result::SENSOR_ERROR;
     }
 
-    if(over_current(current))
+    // 过流判定放在坐标变换前，并保留故障瞬间的原始样本用于安全快照。
+    float current_limit = core_context.config.max_phase_current_a;
+    if(fabsf(current.current_a) > current_limit ||
+        fabsf(current.current_b) > current_limit ||
+        fabsf(current.current_c) > current_limit)
     {
         core_context.fault_current = current;
         core_context.fault_current_valid = true;
@@ -676,7 +596,18 @@ foc_result foc_core::run_control_from_isr(uint32_t timestamp_us)
     telemetry.d_axis_voltage_v = rotating_voltage.d;
     telemetry.q_axis_voltage_v = rotating_voltage.q;
     telemetry.duty = duty;
-    publish_telemetry_from_isr(telemetry);
+
+    // 遥测只按配置分频发布，避免每个控制周期都向 Topic 发送调试数据。
+    if(core_context.control_sequence %
+        core_context.config.telemetry_divider == 0)
+    {
+        BaseType_t higher_priority_task_woken = pdFALSE;
+        if(!telemetry_topic.publish_from_isr(telemetry,
+            higher_priority_task_woken))
+        {
+            latch_fault(foc_fault_mask(foc_fault::INTERNAL));
+        }
+    }
     return foc_result::OK;
 }
 
@@ -853,7 +784,41 @@ foc_result foc_core::init(const foc_config &config)
     {
         return foc_result::NOT_LINKED;
     }
-    if(!valid_config(config)){return foc_result::INVALID_CONFIG;}
+    
+    // 先校验所有模式共用的时序、方向和超时约束。
+    if((config.rotor_direction != 1 && config.rotor_direction != -1) ||
+        !isfinite(config.electrical_zero_offset_rad) ||
+        !isfinite(config.control_period_s) ||
+        config.control_period_s <= 0.0f ||
+        config.rotor_extrapolation_limit_us >
+            config.rotor_hard_timeout_us ||
+        config.rotor_hard_timeout_us == 0 ||
+        config.rotor_slow_timeout_us < config.rotor_hard_timeout_us ||
+        config.communication_error_limit == 0 ||
+        config.telemetry_divider == 0 ||
+        config.control_isr_divider == 0)
+    {
+        return foc_result::INVALID_CONFIG;
+    }
+
+    // 监视模式不驱动功率级，因此只在功率输出模式校验功率和 PI 参数。
+    if(!config.monitor_only &&
+        (config.pole_pairs == 0 ||
+        !isfinite(config.bus_voltage_v) || config.bus_voltage_v <= 0.0f ||
+        !isfinite(config.voltage_limit_v) ||
+            config.voltage_limit_v <= 0.0f ||
+        config.voltage_limit_v > config.bus_voltage_v ||
+        !isfinite(config.max_phase_current_a) ||
+            config.max_phase_current_a <= 0.0f ||
+        !finite_non_negative(config.d_axis_pi.proportional_gain) ||
+        !finite_non_negative(config.d_axis_pi.integral_gain) ||
+        !finite_non_negative(config.d_axis_pi.integral_limit) ||
+        !finite_non_negative(config.q_axis_pi.proportional_gain) ||
+        !finite_non_negative(config.q_axis_pi.integral_gain) ||
+        !finite_non_negative(config.q_axis_pi.integral_limit)))
+    {
+        return foc_result::INVALID_CONFIG;
+    }
 
     if(!target_topic.init() || !telemetry_topic.init() ||
         !fault_request_topic.init() || !current_sample_topic.init() ||
