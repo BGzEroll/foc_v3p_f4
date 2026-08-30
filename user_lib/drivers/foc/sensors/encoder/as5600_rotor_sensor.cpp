@@ -29,6 +29,11 @@ as5600_rotor_sensor::as5600_rotor_sensor(uint8_t i2c_bus_id,
  */
 foc_result as5600_rotor_sensor::init()
 {
+    if(initialized)
+    {
+        return foc_result::OK;
+    }
+
     initialized = false;
     first_sample = true;
     accumulated_count = 0;

@@ -1,7 +1,7 @@
 #include "foc_dev.h"
 
+#include "drivers/foc/sensors/current_sense/stm32_two_shunt_current_sensor.h"
 #include "drivers/foc/sensors/encoder/as5600_rotor_sensor.h"
-#include "system/sys_time.h"
 #include "adc.h"
 #include "main.h"
 #include "tim.h"
@@ -18,20 +18,27 @@ static constexpr UBaseType_t SGUAN_TASK_PRIORITY = tskIDLE_PRIORITY + 2;
 static constexpr uint32_t FOC_SENSOR_UPDATE_PERIOD_MS = 1;
 static constexpr uint32_t SGUAN_UPDATE_PERIOD_MS = 1;
 static constexpr float ADC_REFERENCE_VOLTAGE_V = 3.3f;
-static constexpr float ADC_FULL_SCALE_COUNT = 4095.0f;
-static constexpr float BUS_VOLTAGE_DIVIDER_RATIO = 11.0f;
+static constexpr float ADC_FULL_SCALE_COUNTS = 4096.0f;
+static constexpr float CURRENT_AMPLIFIER_GAIN = 50.0f;
+static constexpr float CURRENT_SHUNT_RESISTANCE_OHM = 0.01f;
+static constexpr float CURRENT_AMPERE_PER_COUNT =
+    ADC_REFERENCE_VOLTAGE_V /
+    (ADC_FULL_SCALE_COUNTS * CURRENT_AMPLIFIER_GAIN *
+        CURRENT_SHUNT_RESISTANCE_OHM);
 
 static as5600_rotor_sensor rotor(AS5600_I2C_BUS_ID,
     AS5600_I2C_ADDRESS);
+static stm32_two_shunt_current_config current_sense_config{
+    &hadc2,
+    CURRENT_AMPERE_PER_COUNT,
+    CURRENT_AMPERE_PER_COUNT,
+    1,
+    -1,
+    two_shunt_phase_mapping::AC
+};
+static stm32_two_shunt_current_sensor current_sense(current_sense_config);
+static sguan_foc_wrapper motor_instance;
 static volatile bool rotor_ready = false;
-static sguan_foc_wrapper motor;
-
-extern "C"
-{
-    volatile float sguan_encoder_angle_rad = 0.0f;
-    volatile float sguan_encoder_velocity_rad_s = 0.0f;
-    volatile uint32_t sguan_encoder_timestamp_us = 0;
-}
 
 /**
  * @brief 启动母线电压连续采样
@@ -91,70 +98,74 @@ static bool start_current_sampling()
 }
 
 /**
- * @brief 周期读取 AS5600，并把最新机械角缓存给高速环
+ * @brief 在任务上下文初始化 AS5600 并持续更新其 Topic
  *
  * @param argument FreeRTOS 任务参数
  */
 static void foc_sensor_task_entry(void *argument)
 {
-    (void)argument;
-    TickType_t last_wake_time = xTaskGetTickCount();
-
     while(rotor.init() != foc_result::OK)
     {
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 
     rotor_sample initial_sample{};
-    if(rotor.read_task(initial_sample) == foc_result::OK)
+    while(rotor.read_task(initial_sample) != foc_result::OK)
     {
-        sguan_encoder_angle_rad = initial_sample.mechanical_angle_rad;
-        sguan_encoder_velocity_rad_s =
-            initial_sample.mechanical_velocity_rad_s;
-        sguan_encoder_timestamp_us = initial_sample.timestamp_us;
-        rotor_ready = true;
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
+    rotor_ready = true;
 
+    TickType_t last_wake_time = xTaskGetTickCount();
     while(true)
     {
-        if(rotor.update_task() == foc_result::OK)
-        {
-            rotor_sample sample{};
-            if(rotor.read_task(sample) == foc_result::OK)
-            {
-                sguan_encoder_angle_rad = sample.mechanical_angle_rad;
-                sguan_encoder_velocity_rad_s =
-                    sample.mechanical_velocity_rad_s;
-                sguan_encoder_timestamp_us = sample.timestamp_us;
-            }
-        }
-
+        rotor.update_task();
         vTaskDelayUntil(&last_wake_time,
             pdMS_TO_TICKS(FOC_SENSOR_UPDATE_PERIOD_MS));
     }
 }
 
 /**
- * @brief 运行 SguanFOC 的主循环和低频状态机
+ * @brief 运行 SguanFOC 初始化、主循环和低频状态机
  *
- * 高速电流环由 ADC2 注入转换中断驱动，本任务只负责初始化、保护和状态机。
+ * 高速电流环由 ADC2 注入转换中断驱动，本任务负责依赖初始化、校准、
+ * 第三方 FOC 初始化和低频状态机。
  *
  * @param argument FreeRTOS 任务参数
  */
 static void sguan_task_entry(void *argument)
 {
-    (void)argument;
-    TickType_t last_wake_time = xTaskGetTickCount();
-
     while(!rotor_ready)
     {
         vTaskDelay(pdMS_TO_TICKS(1));
     }
 
+    sguan_foc_config config = sguan_foc_wrapper::default_config();
+    if(motor_instance.init(config) != foc_result::OK)
+    {
+        Error_Handler();
+    }
+
+    foc_result init_foc_result = motor_instance.init_foc();
+    if(init_foc_result != foc_result::CALIBRATING &&
+        init_foc_result != foc_result::OK)
+    {
+        Error_Handler();
+    }
+
+    bool default_command_sent = false;
+    TickType_t last_wake_time = xTaskGetTickCount();
     while(true)
     {
-        motor.service_loop();
-        motor.low_freq_loop();
+        motor_instance.service();
+        if(motor_instance.ready() && !default_command_sent)
+        {
+            motor_instance.set_controller(
+                motion_control_type::TORQUE);
+            motor_instance.move(0.10f);
+            motor_instance.enable();
+            default_command_sent = true;
+        }
 
         vTaskDelayUntil(&last_wake_time,
             pdMS_TO_TICKS(SGUAN_UPDATE_PERIOD_MS));
@@ -166,24 +177,25 @@ static void sguan_task_entry(void *argument)
  *
  * @return 板级唯一的 SguanFOC wrapper 实例
  */
-sguan_foc_wrapper &foc_dev::controller()
+sguan_foc_wrapper &foc_dev::motor()
 {
-    return motor;
+    return motor_instance;
 }
 
 /**
- * @brief 初始化 AS5600、母线采样、TIM8/ADC2 和 SguanFOC 调度任务
+ * @brief 绑定传感器、启动 TIM8/ADC2 并创建 FOC 调度任务
  */
 void foc_dev::init()
 {
-    if(!start_bus_voltage_sampling() ||
-        !start_current_sampling())
+    if(motor_instance.link_sensor(rotor) != foc_result::OK ||
+        motor_instance.link_current_sense(current_sense) !=
+            foc_result::OK)
     {
         Error_Handler();
     }
 
-    sguan_foc_config config = sguan_foc_wrapper::default_config();
-    if(!motor.init(config))
+    if(!start_bus_voltage_sampling() ||
+        !start_current_sampling())
     {
         Error_Handler();
     }
@@ -225,6 +237,6 @@ extern "C" void HAL_ADCEx_InjectedConvCpltCallback(
 {
     if(adc && adc->Instance == ADC2)
     {
-        motor.high_freq_loop();
+        motor_instance.loop_foc();
     }
 }

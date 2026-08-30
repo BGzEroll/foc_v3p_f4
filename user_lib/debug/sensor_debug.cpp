@@ -117,11 +117,11 @@ static uart_result send_mpu6050_sample(const mpu6050_sample &sample)
  */
 static uart_result send_sguan_status()
 {
-    const sguan_foc_snapshot state = foc_dev::controller().snapshot();
+    const sguan_foc_snapshot state = foc_dev::motor().snapshot();
     int32_t angle = round_to_int32(
-        state.mechanical_angle_rad * RADIAN_TO_CENTIDEGREE);
+        state.angle_rad * RADIAN_TO_CENTIDEGREE);
     int32_t speed = round_to_int32(
-        state.mechanical_velocity_rad_s * 1000.0f);
+        state.velocity_rad_s * 1000.0f);
     int32_t current_d = round_to_int32(state.id_a * 1000.0f);
     int32_t current_q = round_to_int32(state.iq_a * 1000.0f);
     int32_t target_q = round_to_int32(state.target_iq_a * 1000.0f);
@@ -134,7 +134,7 @@ static uart_result send_sguan_status()
         "id_ma=%ld iq_ma=%ld target_iq_ma=%ld uq_mv=%ld "
         "duty=%u,%u,%u\r\n",
         (unsigned int)state.raw_status,
-        static_cast<unsigned int>(state.mode),
+        static_cast<unsigned int>(state.controller),
         (long)angle,
         (long)speed,
         (long)current_d,

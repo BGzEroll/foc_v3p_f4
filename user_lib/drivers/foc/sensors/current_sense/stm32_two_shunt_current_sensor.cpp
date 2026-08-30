@@ -31,7 +31,10 @@ foc_result stm32_two_shunt_current_sensor::init()
         config.ampere_per_count_a <= 0.0f ||
         config.ampere_per_count_b <= 0.0f ||
         (config.direction_a != 1 && config.direction_a != -1) ||
-        (config.direction_b != 1 && config.direction_b != -1))
+        (config.direction_b != 1 && config.direction_b != -1) ||
+        (config.phase_mapping != two_shunt_phase_mapping::AB &&
+            config.phase_mapping != two_shunt_phase_mapping::AC &&
+            config.phase_mapping != two_shunt_phase_mapping::BC))
     {
         return foc_result::INVALID_CONFIG;
     }
@@ -143,11 +146,36 @@ foc_result stm32_two_shunt_current_sensor::read_conversion_from_isr(
     sample.raw_count_b = (uint16_t)raw_b;
     sample.offset_count_a = offset_a;
     sample.offset_count_b = offset_b;
-    sample.current_a = ((float)raw_a - offset_a) *
+    float current_0 = ((float)raw_a - offset_a) *
         config.ampere_per_count_a * (float)config.direction_a;
-    sample.current_b = ((float)raw_b - offset_b) *
+    float current_1 = ((float)raw_b - offset_b) *
         config.ampere_per_count_b * (float)config.direction_b;
-    sample.current_c = -sample.current_a - sample.current_b;
+    float reconstructed_current = -current_0 - current_1;
+
+    switch(config.phase_mapping)
+    {
+        case two_shunt_phase_mapping::AB:
+            sample.current_a = current_0;
+            sample.current_b = current_1;
+            sample.current_c = reconstructed_current;
+            break;
+        case two_shunt_phase_mapping::AC:
+            sample.current_a = current_0;
+            sample.current_b = reconstructed_current;
+            sample.current_c = current_1;
+            break;
+        case two_shunt_phase_mapping::BC:
+            sample.current_a = reconstructed_current;
+            sample.current_b = current_0;
+            sample.current_c = current_1;
+            break;
+        default:
+            sample.current_a = 0.0f;
+            sample.current_b = 0.0f;
+            sample.current_c = 0.0f;
+            sample.valid = false;
+            return foc_result::INVALID_CONFIG;
+    }
     sample.valid = isfinite(sample.current_a) &&
         isfinite(sample.current_b) && isfinite(sample.current_c);
     return sample.valid ? foc_result::OK : foc_result::SENSOR_ERROR;

@@ -27,13 +27,6 @@ static inline void User_MotorSet(void){
 
     Sguan.motor.Encoder_Dir = -1;       // (int8_t)编码器方向1->正向，负1->负向
 
-    Sguan.motor.Current_Dir0 = 1;       // (int8_t)相线电流方向1->正向，负1->负向
-    Sguan.motor.Current_Dir1 = -1;      // (int8_t)相线电流方向1->正向，负1->负向
-    Sguan.motor.Current_Num = 1;        // 当前驱动板沿用原先可运行的 AC 采样映射
-    Sguan.motor.ADC_Precision = 4096;   // (uint32_t)ADC采样精度
-    Sguan.motor.Amplifier = 50.0f;      // (float)运算放大器增益
-    Sguan.motor.MCU_Voltage = 3.3f;     // (float)DSP/单片机的ADC电压基准
-    Sguan.motor.Sampling_Rs = 0.01f;    // (float)采样电阻大小
     // 5.电机安全设计
     Sguan.safe.VBUS_MAX = 14.0f;        // (float)母线电压值波动MAX阈值
     Sguan.safe.VBUS_MIM = 10.0f;        // (float)母线电压值波动MIN阈值

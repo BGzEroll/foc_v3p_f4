@@ -5,7 +5,7 @@
 
 namespace foc_dev
 {
-    sguan_foc_wrapper &controller();
+    sguan_foc_wrapper &motor();
     void init();
 }
 

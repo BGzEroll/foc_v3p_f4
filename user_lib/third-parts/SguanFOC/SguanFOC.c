@@ -44,7 +44,6 @@ static void Transfer_PLL_Loop(PLL_STRUCT *pll,uint8_t mode,float input_Rad);
  * @return {*}
  */
 static void Offset_EncoderRead(SguanFOC_System_STRUCT *sguan);
-static void Offset_CurrentRead(SguanFOC_System_STRUCT *sguan);
 /**
  * @description: 3.Current内部静态函数声明
  * @param {SguanFOC_System_STRUCT} *sguan
@@ -205,39 +204,23 @@ static void Offset_EncoderRead(SguanFOC_System_STRUCT *sguan){
     sguan->encoder.Pos_offset = User_Encoder_ReadRad();
 }
 
-// Offset读取电流偏置
-static void Offset_CurrentRead(SguanFOC_System_STRUCT *sguan){
-    for (uint8_t i = 0; i < 24; i++){
-        sguan->current.Pos_offset0 += User_ReadADC_Raw(0);
-        sguan->current.Pos_offset1 += User_ReadADC_Raw(1);
-        User_Delay(2);
-    }
-    sguan->current.Pos_offset0 = sguan->current.Pos_offset0/24;
-    sguan->current.Pos_offset1 = sguan->current.Pos_offset1/24;
-    sguan->current.Final_Gain = sguan->motor.MCU_Voltage/
-        (sguan->motor.ADC_Precision*sguan->motor.Amplifier*sguan->motor.Sampling_Rs);
-}
-
-// Current读取当前的电流值并更新3相电流(已滤波)
+// Current读取linked CurrentSense提供的三相物理电流(已滤波)
 static void Current_ReadIabc(SguanFOC_System_STRUCT *sguan){
-    float I0 = (User_ReadADC_Raw(0) - sguan->current.Pos_offset0)*
-                            sguan->current.Final_Gain*sguan->motor.Current_Dir0;
-    float I1 = (User_ReadADC_Raw(1) - sguan->current.Pos_offset1)*
-                            sguan->current.Final_Gain*sguan->motor.Current_Dir1;
-    float I2 = -(I0 + I1);
-    if (sguan->motor.Current_Num == 0){  // AB采样(判断电流相序和电机方向)
-        sguan->current.Real_Ia = sguan->motor.Motor_Dir == 1 ? I0 : I1;
-        sguan->current.Real_Ib = sguan->motor.Motor_Dir == 1 ? I1 : I0;
-        sguan->current.Real_Ic = I2;
-    } else if (sguan->motor.Current_Num == 1){  // AC采样(判断电流相序和电机方向)
-        sguan->current.Real_Ia = sguan->motor.Motor_Dir == 1 ? I0 : I2;
-        sguan->current.Real_Ib = sguan->motor.Motor_Dir == 1 ? I2 : I0;
-        sguan->current.Real_Ic = I1;
-    } else {  // BC采样(判断电流相序和电机方向)
-        sguan->current.Real_Ia = sguan->motor.Motor_Dir == 1 ? I2 : I0;
-        sguan->current.Real_Ib = sguan->motor.Motor_Dir == 1 ? I0 : I2;
-        sguan->current.Real_Ic = I1;
+    float ia = 0.0f;
+    float ib = 0.0f;
+    float ic = 0.0f;
+
+    if(User_Current_ReadIabc(&ia, &ib, &ic)){
+        sguan->current.Real_Ia = ia;
+        sguan->current.Real_Ib = ib;
+        sguan->current.Real_Ic = ic;
+        return;
     }
+
+    // 读取失败时只保留零电流，wrapper 会同时锁定业务输出。
+    sguan->current.Real_Ia = 0.0f;
+    sguan->current.Real_Ib = 0.0f;
+    sguan->current.Real_Ic = 0.0f;
 }
 
 // Calculate有传感器角度和电流
@@ -915,9 +898,12 @@ static void Sguan_Start_Tick(void){
         Sguan_Control_Init(&Sguan);
         Sguan_PLL_Init(&Sguan);
         Printf_Init(&Sguan.TXdata);
-        // 读取电流偏置
+        // CurrentSense 已在 wrapper init_foc() 中完成唯一一次零偏校准。
         Sguan.status = MOTOR_STATUS_CALIBRATING;
-        Offset_CurrentRead(&Sguan);
+        if(!User_Current_Offset_Prepared()){
+            Sguan.status = MOTOR_STATUS_SENSOR_ERROR;
+            return;
+        }
         //电机回零操作
         Sguan_Positioning_Set(&Sguan,0.1f*Sguan.motor.VBUS,0.0f);
         User_Delay(1000);

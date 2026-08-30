@@ -7,10 +7,7 @@
 #include "tim.h"
 #include "FreeRTOS.h"
 #include "task.h"
-
-extern volatile float sguan_encoder_angle_rad;
-extern volatile float sguan_encoder_velocity_rad_s;
-extern volatile uint32_t sguan_encoder_timestamp_us;
+#include "wrapper/sguan_foc_bridge.h"
 
 /* 用户自己的CODE END Includes */
 
@@ -28,31 +25,22 @@ static inline void User_Delay(unsigned int ms){
     vTaskDelay(pdMS_TO_TICKS(ms));
 }
 
-static inline signed int User_ReadADC_Raw(unsigned char Current_CH){
-    // 电流采样通道0->AB相，1->AC相，2->BC相
-    // Sguan.motor.Current_Num值自定义采样通道
-    // 用户在UserData_Motor.h中定义“这个值”
-    signed int ADC_num = 0;
-    switch (Current_CH){
-    case 0:
-        ADC_num = (signed int)hadc2.Instance->JDR1;
-        break;
-    case 1:
-        ADC_num = (signed int)hadc2.Instance->JDR2;
-        break;
-    default:
-        break;
-    }
-    return ADC_num;
+static inline uint8_t User_Current_Offset_Prepared(void)
+{
+    return sguan_foc_wrapper_current_offset_prepared();
 }
 
-static inline float User_Encoder_ReadRad(void){
-    uint32_t elapsed_us = __HAL_TIM_GET_COUNTER(&htim5) -
-        sguan_encoder_timestamp_us;
-    if(elapsed_us > 1000){elapsed_us = 1000;}
+static inline uint8_t User_Current_ReadIabc(
+    float *ia,
+    float *ib,
+    float *ic)
+{
+    return sguan_foc_wrapper_read_phase_currents(ia, ib, ic);
+}
 
-    return Value_normalize(sguan_encoder_angle_rad +
-        sguan_encoder_velocity_rad_s * (float)elapsed_us * 0.000001f);
+static inline float User_Encoder_ReadRad(void)
+{
+    return sguan_foc_wrapper_read_encoder_rad();
 }
 
 static inline void User_PwmDuty_Set(unsigned short int Duty_u,

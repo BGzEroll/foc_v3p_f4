@@ -4,6 +4,13 @@
 #include "../current_sensor.h"
 #include "stm32f4xx_hal.h"
 
+enum class two_shunt_phase_mapping : uint8_t
+{
+    AB = 0,
+    AC,
+    BC,
+};
+
 struct stm32_two_shunt_current_config
 {
     ADC_HandleTypeDef *adc = nullptr;
@@ -11,6 +18,8 @@ struct stm32_two_shunt_current_config
     float ampere_per_count_b = 0.0f;
     int8_t direction_a = 1;
     int8_t direction_b = 1;
+    two_shunt_phase_mapping phase_mapping =
+        two_shunt_phase_mapping::AB;
 };
 
 class stm32_two_shunt_current_sensor : public current_sensor

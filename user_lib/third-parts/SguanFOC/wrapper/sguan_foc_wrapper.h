@@ -2,21 +2,24 @@
 #define SGUAN_FOC_WRAPPER_H
 
 #include <stdint.h>
+#include "drivers/foc/sensors/current_sensor.h"
+#include "drivers/foc/sensors/rotor_sensor.h"
 #include "sguan_foc_bridge.h"
 
-enum class sguan_foc_mode : uint8_t
+enum class motion_control_type : uint8_t
 {
-    OPEN_VOLTAGE = 0,
-    CURRENT,
+    TORQUE = 0,
     VELOCITY,
-    POSITION,
+    ANGLE,
 };
 
-enum class sguan_foc_init_error : uint8_t
+enum class sguan_foc_state : uint8_t
 {
-    NONE = 0,
-    BACKEND_ALREADY_IN_USE,
-    INVALID_CONFIG,
+    UNINITIALIZED = 0,
+    INITIALIZING,
+    CALIBRATING,
+    READY,
+    FAULT,
 };
 
 struct sguan_foc_config
@@ -33,17 +36,6 @@ struct sguan_foc_config
         int8_t encoder_direction = 0;
         int8_t pwm_direction = 0;
     } motor;
-
-    struct current_sense
-    {
-        float shunt_resistance_ohm = 0.0f;
-        float amplifier_gain = 0.0f;
-        float adc_reference_v = 0.0f;
-        uint32_t adc_full_scale = 0;
-        int8_t dir0 = 0;
-        int8_t dir1 = 0;
-        uint8_t phase_mapping = 0;
-    } current_sense;
 
     struct current_pi
     {
@@ -66,25 +58,20 @@ struct sguan_foc_config
     float control_period_s = 0.0f;
 };
 
-struct sguan_foc_command
-{
-    float target_id_a = 0.0f;
-    float target_iq_a = 0.10f;
-    float target_velocity_rad_s = 0.0f;
-    double target_position_rad = 0.0;
-    sguan_foc_mode mode = sguan_foc_mode::CURRENT;
-};
-
 struct sguan_foc_snapshot
 {
+    uint32_t sequence = 0;
     bool initialized = false;
+    bool ready = false;
     bool enabled = false;
-    sguan_foc_mode mode = sguan_foc_mode::CURRENT;
-    uint8_t raw_status = 0;
+    bool faulted = false;
+    sguan_foc_state state = sguan_foc_state::UNINITIALIZED;
+    motion_control_type controller = motion_control_type::TORQUE;
+    float target = 0.0f;
 
-    float mechanical_angle_rad = 0.0f;
-    double mechanical_position_rad = 0.0;
-    float mechanical_velocity_rad_s = 0.0f;
+    float angle_rad = 0.0f;
+    double full_angle_rad = 0.0;
+    float velocity_rad_s = 0.0f;
     float electrical_angle_rad = 0.0f;
     float electrical_velocity_rad_s = 0.0f;
 
@@ -103,10 +90,10 @@ struct sguan_foc_snapshot
     uint16_t duty_u = 0;
     uint16_t duty_v = 0;
     uint16_t duty_w = 0;
+    uint8_t raw_status = 0;
 };
 
-// 当前 wrapper 保留对象形式，但 SguanFOC 3.0.0 backend 只允许单实例占用。
-// backend 没有 deinit，guard 在首次成功 init 后保持占用到系统复位。
+// SguanFOC 3.0.0 backend 仍由全局 Sguan 提供，只允许一个 wrapper 占用。
 class sguan_foc_wrapper
 {
     public:
@@ -117,68 +104,84 @@ class sguan_foc_wrapper
         sguan_foc_wrapper &operator=(sguan_foc_wrapper &&) = delete;
 
     public:
-        bool init(const sguan_foc_config &config);
+        foc_result link_sensor(rotor_sensor &sensor);
+        foc_result link_current_sense(current_sensor &current_sense);
+        foc_result init(const sguan_foc_config &config);
+        foc_result init_foc();
 
     public:
-        // ISR-safe，ADC2 注入转换完成回调在20 kHz调用。
-        void high_freq_loop();
-
-        // Task context，保持现有 SguanFOC 主循环调用频率。
-        void service_loop();
-
-        // Task context，约1 kHz调用保护和状态机。
-        void low_freq_loop();
-
-        // Task context，写入下一次高速环使用的电流目标。
-        void set_current(float id_a, float iq_a);
-
-        // Task context，写入速度环目标。
-        void set_velocity(float velocity_rad_s);
-
-        // Task context，写入位置环目标。
-        void set_position(double position_rad);
-
-        // Task context，切换工程侧控制模式。
-        void set_mode(sguan_foc_mode mode);
-
-        // Task context，请求进入已使能状态。
+        void set_controller(motion_control_type controller);
+        void move(float target);
+        void set_current_dq(float id_a, float iq_a);
         void enable();
-
-        // Task context，请求进入第三方失能状态。
         void disable();
 
-        // Task context，返回 wrapper 是否已绑定 backend。
         bool initialized() const;
-
-        // Task context，返回当前是否处于可运行状态。
+        bool ready() const;
         bool enabled() const;
-
-        // Task context，读取一致的只读运行快照。
+        bool faulted() const;
+        motion_control_type controller() const;
         sguan_foc_snapshot snapshot() const;
 
-        // Task context，读取最近一次 init 失败原因。
-        sguan_foc_init_error last_init_error() const;
-
         static sguan_foc_config default_config();
+
+    public:
+        // 仅由 ADC2 注入转换完成中断在20 kHz调用。
+        void loop_foc();
+
+        // 仅由板级低频任务调用，保持主循环先于低频状态机执行。
+        void service();
 
     private:
         friend void sguan_foc_wrapper_apply_config(void);
         friend void sguan_foc_wrapper_apply_command(void);
+        friend float sguan_foc_wrapper_read_encoder_rad(void);
+        friend uint8_t sguan_foc_wrapper_read_phase_currents(
+            float *ia,
+            float *ib,
+            float *ic);
+        friend uint8_t sguan_foc_wrapper_current_offset_prepared(void);
+
+        struct command
+        {
+            motion_control_type controller = motion_control_type::TORQUE;
+            float target_id_a = 0.0f;
+            float target_iq_a = 0.0f;
+            float target_velocity_rad_s = 0.0f;
+            double target_position_rad = 0.0;
+        };
 
         void apply_config_to_backend();
         void apply_command_to_backend();
         void publish_snapshot();
+        float read_encoder_from_isr();
+        uint8_t read_phase_currents_from_isr(
+            float *ia,
+            float *ib,
+            float *ic);
+        bool backend_faulted() const;
 
         static sguan_foc_wrapper *active_instance_;
 
+        rotor_sensor *sensor_ = nullptr;
+        current_sensor *current_sense_ = nullptr;
         sguan_foc_config config_{};
-        volatile sguan_foc_command command_{};
-        volatile sguan_foc_snapshot snapshot_cache_{};
-        volatile uint32_t snapshot_sequence_ = 0;
+        volatile command command_{};
+        rotor_sample last_rotor_sample_{};
+        bool last_rotor_sample_valid_ = false;
+        volatile bool sensor_fault_ = false;
+        volatile bool current_fault_ = false;
+        volatile bool current_calibration_done_ = false;
+        volatile bool initialized_ = false;
+        volatile bool output_enabled_ = false;
+        volatile sguan_foc_state state_ =
+            sguan_foc_state::UNINITIALIZED;
+        volatile foc_result last_result_ = foc_result::OK;
 
-        bool initialized_ = false;
-        volatile bool enabled_ = false;
-        sguan_foc_init_error last_error_ = sguan_foc_init_error::NONE;
+        volatile sguan_foc_snapshot snapshot_cache_{};
+        volatile uint32_t snapshot_guard_sequence_ = 0;
+        uint32_t snapshot_publish_sequence_ = 0;
+        uint32_t snapshot_divider_ = 0;
 };
 
 #endif
