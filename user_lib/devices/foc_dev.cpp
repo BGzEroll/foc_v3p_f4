@@ -194,8 +194,6 @@ static void foc_sensor_task_entry(void *argument)
  */
 static void foc_safety_task_entry(void *argument)
 {
-    vTaskDelay(pdMS_TO_TICKS(
-        commissioning_config.current_sensor_settle_time_ms));
     TickType_t last_wake_time = xTaskGetTickCount();
 
     while(true)
@@ -226,7 +224,6 @@ void foc_dev::init()
     }
 
     commissioning_config = {};
-    commissioning_config.motor_pole_pairs = MOTOR_POLE_PAIRS;
     if(foc::commissioning::init(commissioning_config,
         sys_time::get_ms_tick()) != foc_result::OK)
     {

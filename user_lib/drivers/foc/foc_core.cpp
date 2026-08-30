@@ -52,6 +52,7 @@ struct foc_context
     bool fault_current_valid = false;
     bool current_calibration_started = false;
     bool current_calibration_done = false;
+    volatile bool command_valid = false;
     volatile bool calibration_output_active = false;
 };
 
@@ -82,6 +83,7 @@ static bool finite_non_negative(float value)
 static void latch_fault(uint32_t fault_flags)
 {
     core_context.fault_flags |= fault_flags;
+    core_context.command_valid = false;
     core_context.state = foc_state::FAULT;
     foc_math::reset_pi(core_context.d_axis_pi);
     foc_math::reset_pi(core_context.q_axis_pi);
@@ -145,10 +147,6 @@ foc_result foc::set_target(const foc_target &target)
     command.timestamp_ms = sys_time::get_ms_tick();
     switch(target.mode)
     {
-        case foc_control_mode::DISABLED:
-            command.runtime_mode = foc_runtime_mode::DISABLED;
-            break;
-
         case foc_control_mode::VOLTAGE:
             command.runtime_mode = foc_runtime_mode::VOLTAGE;
             break;
@@ -193,6 +191,28 @@ foc_result foc::internal::set_command(const foc_command &command)
         return foc_result::TOPIC_ERROR;
     }
 
+    core_context.command_valid =
+        pending_command.runtime_mode != foc_runtime_mode::DISABLED;
+
+    return foc_result::OK;
+}
+
+/**
+ * @brief 读取 FOC 配置中的电机极对数
+ *
+ * @param pole_pairs 用于接收极对数的对象
+ *
+ * @return 查询结果
+ */
+foc_result foc::internal::get_pole_pairs(uint8_t &pole_pairs)
+{
+    if(!core_context.initialized){return foc_result::NOT_INITIALIZED;}
+    if(core_context.config.pole_pairs == 0)
+    {
+        return foc_result::INVALID_CONFIG;
+    }
+
+    pole_pairs = core_context.config.pole_pairs;
     return foc_result::OK;
 }
 
@@ -315,7 +335,7 @@ foc_result foc::internal::set_current_directions_task(
 /**
  * @brief 尝试进入真实 FOC 运行状态并开启功率输出
  *
- * @return 首版监视配置固定拒绝使能
+ * @return 当前目标新鲜且硬件就绪时返回 OK，否则返回相应错误
  */
 foc_result foc::enable()
 {
@@ -331,8 +351,16 @@ foc_result foc::enable()
     }
 
     foc_command command{};
-    if(!command_topic.peek(command) ||
+    if(!core_context.command_valid ||
+        !command_topic.peek(command) ||
         command.runtime_mode == foc_runtime_mode::DISABLED)
+    {
+        return foc_result::NOT_READY;
+    }
+
+    uint32_t now_ms = sys_time::get_ms_tick();
+    if(now_ms - command.timestamp_ms >
+        core_context.config.command_timeout_ms)
     {
         return foc_result::NOT_READY;
     }
@@ -348,10 +376,17 @@ foc_result foc::enable()
 }
 
 /**
- * @brief 关闭硬件输出并退出运行状态
+ * @brief 关闭硬件输出、退出运行状态并使当前命令失效
  */
 void foc::disable()
 {
+    if(core_context.initialized && core_context.fault_flags == 0)
+    {
+        core_context.state = core_context.config.monitor_only ?
+            foc_state::MONITORING : foc_state::READY;
+    }
+    core_context.command_valid = false;
+
     if(core_context.driver)
     {
         core_context.driver->disable_output();
@@ -360,11 +395,6 @@ void foc::disable()
 
     foc_math::reset_pi(core_context.d_axis_pi);
     foc_math::reset_pi(core_context.q_axis_pi);
-    if(core_context.initialized && core_context.fault_flags == 0)
-    {
-        core_context.state = core_context.config.monitor_only ?
-            foc_state::MONITORING : foc_state::READY;
-    }
 }
 
 /**
@@ -375,6 +405,7 @@ void foc::disable()
 foc_result foc::clear_fault()
 {
     if(!core_context.initialized){return foc_result::NOT_INITIALIZED;}
+    core_context.command_valid = false;
     core_context.driver->disable_output();
     core_context.calibration_output_active = false;
     if(core_context.driver->fault_active_from_isr())
@@ -500,7 +531,8 @@ foc_result foc::runtime::run_control_from_isr(uint32_t timestamp_us)
     }
 
     foc_command command{};
-    if(!command_topic.peek_from_isr(command) ||
+    if(!core_context.command_valid ||
+        !command_topic.peek_from_isr(command) ||
         command.runtime_mode == foc_runtime_mode::DISABLED)
     {
         latch_fault(foc_fault_mask(foc_fault::COMMAND_TIMEOUT));
@@ -670,7 +702,13 @@ foc_result foc::runtime::update_safety(uint32_t timestamp_ms)
         sample_age_us(now_us, rotor.timestamp_us) : now_us;
     uint32_t new_fault_flags = 0;
     foc_command command{};
-    command_topic.peek(command);
+    bool command_available = core_context.command_valid &&
+        command_topic.peek(command) &&
+        command.runtime_mode != foc_runtime_mode::DISABLED;
+    if(!command_available)
+    {
+        command = {};
+    }
     const foc_target &target = command.target;
 
     if(core_context.consecutive_bus_error_count >=
@@ -692,9 +730,9 @@ foc_result foc::runtime::update_safety(uint32_t timestamp_ms)
 
     if(!core_context.config.monitor_only &&
         core_context.state == foc_state::RUNNING &&
-        command.runtime_mode != foc_runtime_mode::DISABLED &&
-        timestamp_ms - command.timestamp_ms >
-            core_context.config.command_timeout_ms)
+        (!command_available ||
+            timestamp_ms - command.timestamp_ms >
+                core_context.config.command_timeout_ms))
     {
         new_fault_flags |= foc_fault_mask(foc_fault::COMMAND_TIMEOUT);
     }
@@ -865,6 +903,7 @@ foc_result foc::init(const foc_config &config,
     core_context.fault_current_valid = false;
     core_context.current_calibration_started = false;
     core_context.current_calibration_done = false;
+    core_context.command_valid = false;
     core_context.calibration_output_active = false;
     core_context.state = config.monitor_only ? foc_state::MONITORING :
         foc_state::READY;

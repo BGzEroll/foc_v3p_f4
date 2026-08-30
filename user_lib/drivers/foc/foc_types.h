@@ -34,8 +34,7 @@ enum class foc_state : uint8_t
 
 enum class foc_control_mode : uint8_t
 {
-    DISABLED = 0,
-    VOLTAGE,
+    VOLTAGE = 0,
     CURRENT
 };
 
@@ -104,7 +103,7 @@ struct phase_duty
 
 struct foc_target
 {
-    foc_control_mode mode = foc_control_mode::DISABLED;
+    foc_control_mode mode = foc_control_mode::CURRENT;
     float d_axis_current_a = 0.0f;
     float q_axis_current_a = 0.0f;
     float d_axis_voltage_v = 0.0f;

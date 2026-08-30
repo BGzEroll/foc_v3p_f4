@@ -7,7 +7,6 @@
 #include "system/topic.h"
 #include <math.h>
 
-static constexpr float ALIGNMENT_VOLTAGE_V = 3.0f;
 static constexpr float FIRST_ALIGNMENT_ANGLE_RAD = 0.0f;
 static constexpr float SECOND_PHASE_VECTOR_ANGLE_RAD =
     2.09439510239319549231f;
@@ -27,12 +26,6 @@ static constexpr float PHASE_VECTOR_RATIO_MAXIMUM = 0.75f;
 static constexpr float PHASE_VECTOR_EQUAL_RATIO_MINIMUM = 0.50f;
 static constexpr float PHASE_VECTOR_EQUAL_RATIO_MAXIMUM = 2.00f;
 static constexpr float ROTOR_ALIGNMENT_MINIMUM_MOVE_RAD = 0.03f;
-static constexpr float D_AXIS_VERIFY_TARGET_A = 0.05f;
-static constexpr float Q_AXIS_VERIFY_TARGET_A = 0.03f;
-static constexpr float OPEN_LOOP_TEST_VOLTAGE_V = 3.0f;
-static constexpr float OPEN_LOOP_MECHANICAL_VELOCITY_RAD_S = 10.0f;
-static constexpr float OPEN_LOOP_MINIMUM_BUS_VOLTAGE_V = 9.0f;
-static constexpr float OPEN_LOOP_MAXIMUM_BUS_VOLTAGE_V = 15.0f;
 static constexpr float OPEN_LOOP_MINIMUM_MECHANICAL_MOVE_RAD = 0.25f;
 static constexpr uint32_t OPEN_LOOP_HOLD_TIME_MS = 500;
 static constexpr uint32_t OPEN_LOOP_ACCELERATION_TIME_MS = 3000;
@@ -41,10 +34,12 @@ static constexpr uint32_t OPEN_LOOP_RUN_TIME_MS =
     OPEN_LOOP_ACCELERATION_TIME_MS * 2 +
     OPEN_LOOP_CONSTANT_SPEED_TIME_MS;
 static constexpr uint32_t OPEN_LOOP_PAUSE_TIME_MS = 500;
+static constexpr uint32_t MAX_CURRENT_SENSOR_SETTLE_TIME_MS = 60000;
 
 static foc_commissioning_config commissioning_config{};
 static bool commissioning_initialized = false;
 static uint32_t commissioning_start_ms = 0;
+static uint8_t commissioning_pole_pairs = 0;
 
 static topic::latest_topic<foc_commissioning_status>
     commissioning_topic;
@@ -231,7 +226,8 @@ static foc_result set_alignment_target(uint32_t timestamp_ms,
     command.timestamp_ms = timestamp_ms;
     command.target.mode = foc_control_mode::VOLTAGE;
     command.runtime_mode = foc_runtime_mode::OPEN_LOOP_VOLTAGE;
-    command.target.d_axis_voltage_v = ALIGNMENT_VOLTAGE_V;
+    command.target.d_axis_voltage_v =
+        commissioning_config.alignment_voltage_v;
     command.electrical_angle_rad = electrical_angle_rad;
     command.electrical_angle_timestamp_us = sys_time::get_us_tick();
     return foc::internal::set_command(command);
@@ -271,9 +267,9 @@ static foc_result set_open_loop_target(uint32_t timestamp_ms,
 static bool open_loop_bus_voltage_valid()
 {
     return commissioning_status.bus_voltage_v >=
-        OPEN_LOOP_MINIMUM_BUS_VOLTAGE_V &&
+        commissioning_config.minimum_bus_voltage_v &&
         commissioning_status.bus_voltage_v <=
-        OPEN_LOOP_MAXIMUM_BUS_VOLTAGE_V;
+        commissioning_config.maximum_bus_voltage_v;
 }
 
 /**
@@ -324,8 +320,8 @@ static float calculate_open_loop_rotation_rad(
         (float)OPEN_LOOP_CONSTANT_SPEED_TIME_MS * 0.001f;
     float elapsed_s = (float)rotation_elapsed_ms * 0.001f;
     float electrical_velocity_rad_s =
-        OPEN_LOOP_MECHANICAL_VELOCITY_RAD_S *
-        (float)commissioning_config.motor_pole_pairs;
+        commissioning_config.open_loop_mechanical_velocity_rad_s *
+        (float)commissioning_pole_pairs;
     float acceleration_rad_s2 =
         electrical_velocity_rad_s / acceleration_time_s;
     float acceleration_angle_rad = 0.5f * acceleration_rad_s2 *
@@ -374,8 +370,8 @@ static float calculate_open_loop_velocity_rad_s(
         (float)OPEN_LOOP_CONSTANT_SPEED_TIME_MS * 0.001f;
     float elapsed_s = (float)rotation_elapsed_ms * 0.001f;
     float electrical_velocity_rad_s =
-        OPEN_LOOP_MECHANICAL_VELOCITY_RAD_S *
-        (float)commissioning_config.motor_pole_pairs;
+        commissioning_config.open_loop_mechanical_velocity_rad_s *
+        (float)commissioning_pole_pairs;
     float acceleration_rad_s2 =
         electrical_velocity_rad_s / acceleration_time_s;
 
@@ -425,7 +421,7 @@ static foc_result update_open_loop_target(uint32_t timestamp_ms,
         open_loop_stage_start_electrical_angle_rad +
         (float)direction *
         calculate_open_loop_rotation_rad(rotation_elapsed_ms);
-    float q_axis_voltage_v = OPEN_LOOP_TEST_VOLTAGE_V *
+    float q_axis_voltage_v = commissioning_config.open_loop_voltage_v *
         voltage_progress;
     float electrical_velocity_rad_s = (float)direction *
         calculate_open_loop_velocity_rad_s(rotation_elapsed_ms);
@@ -434,6 +430,10 @@ static foc_result update_open_loop_target(uint32_t timestamp_ms,
         q_axis_voltage_v,
         electrical_velocity_rad_s);
 }
+
+static foc_result start_alignment_stage(foc_commissioning_stage stage,
+    uint32_t timestamp_ms,
+    float electrical_angle_rad);
 
 /**
  * @brief 完成正向开环验证并进入停机间隔
@@ -458,11 +458,13 @@ static void finish_open_loop_forward(const foc_snapshot &snapshot,
 }
 
 /**
- * @brief 完成反向开环验证并关闭功率输出
+ * @brief 完成反向开环验证并进入第一个静态对齐阶段
  *
  * @param snapshot 最新 FOC 快照
+ * @param timestamp_ms 当前时间戳
  */
-static void finish_open_loop_reverse(const foc_snapshot &snapshot)
+static void finish_open_loop_reverse(const foc_snapshot &snapshot,
+    uint32_t timestamp_ms)
 {
     commissioning_status.open_loop_reverse_delta_rad =
         snapshot.rotor.full_angle_rad -
@@ -471,18 +473,29 @@ static void finish_open_loop_reverse(const foc_snapshot &snapshot)
         commissioning_status.open_loop_forward_delta_rad;
     float reverse_delta =
         commissioning_status.open_loop_reverse_delta_rad;
-    commissioning_status.open_loop_motion_detected =
-        fabsf(forward_delta) >= OPEN_LOOP_MINIMUM_MECHANICAL_MOVE_RAD &&
-        fabsf(reverse_delta) >= OPEN_LOOP_MINIMUM_MECHANICAL_MOVE_RAD &&
+    bool forward_valid = isfinite(forward_delta) &&
+        fabsf(forward_delta) >= OPEN_LOOP_MINIMUM_MECHANICAL_MOVE_RAD;
+    bool reverse_valid = isfinite(reverse_delta) &&
+        fabsf(reverse_delta) >= OPEN_LOOP_MINIMUM_MECHANICAL_MOVE_RAD;
+    commissioning_status.open_loop_motion_detected = forward_valid &&
+        reverse_valid &&
         forward_delta * reverse_delta < 0.0f;
 
     foc::disable();
-    commissioning_status.stage = commissioning_status.open_loop_motion_detected ?
-        foc_commissioning_stage::COMPLETE :
-        foc_commissioning_stage::FAILED;
-    commissioning_status.result = commissioning_status.open_loop_motion_detected ?
-        foc_result::OK : foc_result::ROTOR_ALIGNMENT_FAILED;
-    publish_commissioning_status();
+    if(!commissioning_status.open_loop_motion_detected)
+    {
+        fail_commissioning(foc_result::ROTOR_ALIGNMENT_FAILED);
+        return;
+    }
+
+    foc_result result = start_alignment_stage(
+        foc_commissioning_stage::ALIGN_FIRST,
+        timestamp_ms,
+        FIRST_ALIGNMENT_ANGLE_RAD);
+    if(result != foc_result::OK)
+    {
+        fail_commissioning(result);
+    }
 }
 
 /**
@@ -707,7 +720,7 @@ static void finish_second_alignment(const foc_snapshot &snapshot,
             ALIGNMENT_SWEEP_ANGLE_RAD -
             commissioning_status.second_mechanical_angle_rad *
             (float)commissioning_status.rotor_direction *
-            (float)commissioning_config.motor_pole_pairs);
+            (float)commissioning_pole_pairs);
 
     foc_result alignment_result = foc::internal::set_rotor_alignment(
         commissioning_status.rotor_direction,
@@ -719,7 +732,7 @@ static void finish_second_alignment(const foc_snapshot &snapshot,
     }
 
     foc_result target_result = set_current_target(timestamp_ms,
-        D_AXIS_VERIFY_TARGET_A,
+        commissioning_config.d_axis_verify_current_a,
         0.0f);
     if(target_result != foc_result::OK)
     {
@@ -768,7 +781,7 @@ static void finish_d_axis_verification(uint32_t timestamp_ms)
 
     foc_result target_result = set_current_target(timestamp_ms,
         0.0f,
-        Q_AXIS_VERIFY_TARGET_A);
+        commissioning_config.q_axis_verify_current_a);
     if(target_result != foc_result::OK)
     {
         fail_commissioning(target_result);
@@ -833,12 +846,12 @@ static void update_commissioning(const foc_snapshot &snapshot,
                 snapshot.current.valid && open_loop_bus_voltage_valid())
             {
                 commissioning_status.open_loop_voltage_v =
-                    OPEN_LOOP_TEST_VOLTAGE_V;
+                    commissioning_config.open_loop_voltage_v;
                 commissioning_status.open_loop_mechanical_velocity_rad_s =
-                    OPEN_LOOP_MECHANICAL_VELOCITY_RAD_S;
+                    commissioning_config.open_loop_mechanical_velocity_rad_s;
                 commissioning_status.open_loop_electrical_velocity_rad_s =
-                    OPEN_LOOP_MECHANICAL_VELOCITY_RAD_S *
-                    (float)commissioning_config.motor_pole_pairs;
+                    commissioning_config.open_loop_mechanical_velocity_rad_s *
+                    (float)commissioning_pole_pairs;
                 foc_result result = start_open_loop_stage(
                     foc_commissioning_stage::OPEN_LOOP_FORWARD,
                     snapshot,
@@ -906,7 +919,7 @@ static void update_commissioning(const foc_snapshot &snapshot,
                 OPEN_LOOP_HOLD_TIME_MS + OPEN_LOOP_RUN_TIME_MS &&
                 snapshot_available && snapshot.rotor.valid)
             {
-                finish_open_loop_reverse(snapshot);
+                finish_open_loop_reverse(snapshot, timestamp_ms);
             }
             break;
 
@@ -1001,7 +1014,7 @@ static void update_commissioning(const foc_snapshot &snapshot,
 
         case foc_commissioning_stage::VERIFY_D_AXIS_CURRENT:
             if(set_current_target(timestamp_ms,
-                D_AXIS_VERIFY_TARGET_A,
+                commissioning_config.d_axis_verify_current_a,
                 0.0f) != foc_result::OK)
             {
                 fail_commissioning(foc_result::TOPIC_ERROR);
@@ -1017,7 +1030,8 @@ static void update_commissioning(const foc_snapshot &snapshot,
         case foc_commissioning_stage::VERIFY_Q_AXIS_CURRENT:
             if(set_current_target(timestamp_ms,
                 0.0f,
-                Q_AXIS_VERIFY_TARGET_A) != foc_result::OK)
+                commissioning_config.q_axis_verify_current_a) !=
+                foc_result::OK)
             {
                 fail_commissioning(foc_result::TOPIC_ERROR);
                 break;
@@ -1051,10 +1065,34 @@ foc_result foc::commissioning::init(
     {
         return foc_result::INVALID_STATE;
     }
-    if(config.motor_pole_pairs == 0 ||
-        config.current_calibration_sample_count == 0)
+    if(config.current_sensor_settle_time_ms == 0 ||
+        config.current_sensor_settle_time_ms >
+            MAX_CURRENT_SENSOR_SETTLE_TIME_MS ||
+        config.current_calibration_sample_count == 0 ||
+        !isfinite(config.alignment_voltage_v) ||
+        config.alignment_voltage_v <= 0.0f ||
+        !isfinite(config.open_loop_voltage_v) ||
+        config.open_loop_voltage_v <= 0.0f ||
+        !isfinite(config.open_loop_mechanical_velocity_rad_s) ||
+        config.open_loop_mechanical_velocity_rad_s <= 0.0f ||
+        !isfinite(config.minimum_bus_voltage_v) ||
+        config.minimum_bus_voltage_v <= 0.0f ||
+        !isfinite(config.maximum_bus_voltage_v) ||
+        config.maximum_bus_voltage_v <= config.minimum_bus_voltage_v ||
+        !isfinite(config.d_axis_verify_current_a) ||
+        config.d_axis_verify_current_a <= 0.0f ||
+        !isfinite(config.q_axis_verify_current_a) ||
+        config.q_axis_verify_current_a <= 0.0f)
     {
         return foc_result::INVALID_ARGUMENT;
+    }
+
+    uint8_t pole_pairs = 0;
+    foc_result pole_pairs_result = foc::internal::get_pole_pairs(
+        pole_pairs);
+    if(pole_pairs_result != foc_result::OK)
+    {
+        return pole_pairs_result;
     }
     if(!commissioning_topic.init())
     {
@@ -1062,6 +1100,7 @@ foc_result foc::commissioning::init(
     }
 
     commissioning_config = config;
+    commissioning_pole_pairs = pole_pairs;
     commissioning_start_ms = timestamp_ms;
     commissioning_stage_start_ms = timestamp_ms;
     current_calibration_finished = false;

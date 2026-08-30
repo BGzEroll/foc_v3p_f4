@@ -23,9 +23,15 @@ enum class foc_commissioning_stage : uint8_t
 
 struct foc_commissioning_config
 {
-    uint8_t motor_pole_pairs = 0;
     uint32_t current_sensor_settle_time_ms = 500;
     uint32_t current_calibration_sample_count = 4096;
+    float alignment_voltage_v = 3.0f;
+    float open_loop_voltage_v = 3.0f;
+    float open_loop_mechanical_velocity_rad_s = 10.0f;
+    float minimum_bus_voltage_v = 9.0f;
+    float maximum_bus_voltage_v = 15.0f;
+    float d_axis_verify_current_a = 0.05f;
+    float q_axis_verify_current_a = 0.03f;
 };
 
 struct foc_commissioning_status
