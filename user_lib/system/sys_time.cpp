@@ -29,7 +29,7 @@ static void init()
         initialized = true;
     }
 
-    if(interrupt_mask == 0U){__enable_irq();}
+    if(interrupt_mask == 0){__enable_irq();}
 }
 
 /**
@@ -43,26 +43,26 @@ static void init()
 void sys_time::delay_ms(uint32_t duration_ms)
 {
     init();
-    if(duration_ms == 0U){return;}
+    if(duration_ms == 0){return;}
 
-    if(__get_IPSR() == 0U &&
+    if(__get_IPSR() == 0 &&
         xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
     {
         TickType_t delay_ticks = pdMS_TO_TICKS(duration_ms);
-        if(delay_ticks == 0U){delay_ticks = 1U;}
+        if(delay_ticks == 0){delay_ticks = 1;}
         vTaskDelay(delay_ticks);
         return;
     }
 
-    if(__get_IPSR() == 0U)
+    if(__get_IPSR() == 0)
     {
         HAL_Delay(duration_ms);
         return;
     }
 
-    while(duration_ms > 0U)
+    while(duration_ms > 0)
     {
-        delay_us(1000U);
+        delay_us(1000);
         duration_ms--;
     }
 }

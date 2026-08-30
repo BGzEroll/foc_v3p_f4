@@ -5,7 +5,7 @@
 #include "task.h"
 
 static constexpr uint16_t SSD1306_TASK_STACK_DEPTH = 256;
-static constexpr UBaseType_t SSD1306_TASK_PRIORITY = tskIDLE_PRIORITY + 2U;
+static constexpr UBaseType_t SSD1306_TASK_PRIORITY = tskIDLE_PRIORITY + 2;
 static constexpr uint32_t SSD1306_POWER_ON_DELAY_MS = 1000;
 static constexpr uint32_t SSD1306_UPDATE_PERIOD_MS = 1000;
 
@@ -39,7 +39,7 @@ static void ssd1306_task_entry(void *argument)
         Error_Handler();
     }
 
-    uint32_t update_count = 0U;
+    uint32_t update_count = 0;
     TickType_t last_wake_time = xTaskGetTickCount();
 
     while(true)

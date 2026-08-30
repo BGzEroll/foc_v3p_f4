@@ -25,8 +25,8 @@ foc_result tim1_phase_driver::init()
     output_enabled = false;
 
     if(!config.timer || config.timer->Instance != TIM1 ||
-        !config.enable_port || config.enable_pin == 0U ||
-        config.timer->Init.Period == 0U || !channels_valid())
+        !config.enable_port || config.enable_pin == 0 ||
+        config.timer->Init.Period == 0 || !channels_valid())
     {
         return foc_result::INVALID_CONFIG;
     }
@@ -116,7 +116,7 @@ foc_result tim1_phase_driver::write_duty_from_isr(
         return foc_result::INVALID_ARGUMENT;
     }
 
-    uint32_t period = config.timer->Init.Period + 1U;
+    uint32_t period = config.timer->Init.Period + 1;
     write_compare(config.phase_a_channel,
         (uint32_t)(duty.phase_a * (float)period));
     write_compare(config.phase_b_channel,
@@ -134,7 +134,7 @@ foc_result tim1_phase_driver::write_duty_from_isr(
 bool tim1_phase_driver::fault_active_from_isr() const
 {
     if(!config.timer || !config.timer->Instance){return true;}
-    return (config.timer->Instance->SR & TIM_SR_BIF) != 0U;
+    return (config.timer->Instance->SR & TIM_SR_BIF) != 0;
 }
 
 /**
@@ -144,7 +144,7 @@ bool tim1_phase_driver::fault_active_from_isr() const
  */
 bool tim1_phase_driver::channels_valid() const
 {
-    uint8_t channel_mask = 0U;
+    uint8_t channel_mask = 0;
     const uint8_t channels[3] =
     {
         config.phase_a_channel,
@@ -154,13 +154,13 @@ bool tim1_phase_driver::channels_valid() const
 
     for(uint8_t channel : channels)
     {
-        if(channel < 1U || channel > 3U)
+        if(channel < 1 || channel > 3)
         {
             return false;
         }
 
-        uint8_t channel_bit = (uint8_t)(1U << (channel - 1U));
-        if((channel_mask & channel_bit) != 0U)
+        uint8_t channel_bit = (uint8_t)(1U << (channel - 1));
+        if((channel_mask & channel_bit) != 0)
         {
             return false;
         }
@@ -168,7 +168,7 @@ bool tim1_phase_driver::channels_valid() const
         channel_mask |= channel_bit;
     }
 
-    return channel_mask == 0x07U;
+    return channel_mask == 0x07;
 }
 
 /**
@@ -182,13 +182,13 @@ void tim1_phase_driver::write_compare(uint8_t channel,
 {
     switch(channel)
     {
-        case 1U:
+        case 1:
             config.timer->Instance->CCR1 = compare;
             break;
-        case 2U:
+        case 2:
             config.timer->Instance->CCR2 = compare;
             break;
-        case 3U:
+        case 3:
             config.timer->Instance->CCR3 = compare;
             break;
         default:
@@ -210,7 +210,7 @@ void tim1_phase_driver::write_enable_pin(bool enabled)
     }
     else
     {
-        config.enable_port->BSRR = (uint32_t)config.enable_pin << 16U;
+        config.enable_port->BSRR = (uint32_t)config.enable_pin << 16;
     }
 }
 
@@ -221,7 +221,7 @@ void tim1_phase_driver::write_neutral_duty()
 {
     if(!config.timer || !config.timer->Instance){return;}
 
-    uint32_t neutral_compare = (config.timer->Init.Period + 1U) / 2U;
+    uint32_t neutral_compare = (config.timer->Init.Period + 1) / 2;
     config.timer->Instance->CCR1 = neutral_compare;
     config.timer->Instance->CCR2 = neutral_compare;
     config.timer->Instance->CCR3 = neutral_compare;

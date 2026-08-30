@@ -8,7 +8,7 @@
 static constexpr uint32_t GREEN_LED_ON_TIME_MS = 100;
 static constexpr uint32_t GREEN_LED_OFF_TIME_MS = 900;
 static constexpr uint16_t LED_TASK_STACK_DEPTH = 128;
-static constexpr UBaseType_t LED_TASK_PRIORITY = tskIDLE_PRIORITY + 1U;
+static constexpr UBaseType_t LED_TASK_PRIORITY = tskIDLE_PRIORITY + 1;
 
 static leds green_led(ONBORAD_GREEN_LED_GPIO_Port,
     ONBORAD_GREEN_LED_Pin,

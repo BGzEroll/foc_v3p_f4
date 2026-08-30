@@ -42,7 +42,7 @@ enum class foc_control_mode : uint8_t
 
 enum class foc_fault : uint32_t
 {
-    NONE = 0U,
+    NONE = 0,
     ROTOR_NOT_READY = 1UL << 0,
     ROTOR_STALE = 1UL << 1,
     ROTOR_COMMUNICATION = 1UL << 2,
@@ -64,9 +64,9 @@ struct pi_config
 
 struct rotor_sample
 {
-    uint32_t sequence = 0U;
-    uint32_t timestamp_us = 0U;
-    uint16_t raw_count = 0U;
+    uint32_t sequence = 0;
+    uint32_t timestamp_us = 0;
+    uint16_t raw_count = 0;
     float mechanical_angle_rad = 0.0f;
     float full_angle_rad = 0.0f;
     float mechanical_velocity_rad_s = 0.0f;
@@ -75,10 +75,10 @@ struct rotor_sample
 
 struct phase_current_sample
 {
-    uint32_t sequence = 0U;
-    uint32_t timestamp_us = 0U;
-    uint16_t raw_count_a = 0U;
-    uint16_t raw_count_b = 0U;
+    uint32_t sequence = 0;
+    uint32_t timestamp_us = 0;
+    uint16_t raw_count_a = 0;
+    uint16_t raw_count_b = 0;
     float offset_count_a = 0.0f;
     float offset_count_b = 0.0f;
     float current_a = 0.0f;
@@ -96,9 +96,9 @@ struct phase_duty
 
 struct foc_target
 {
-    uint32_t sequence = 0U;
-    uint32_t timestamp_ms = 0U;
-    uint32_t electrical_angle_timestamp_us = 0U;
+    uint32_t sequence = 0;
+    uint32_t timestamp_ms = 0;
+    uint32_t electrical_angle_timestamp_us = 0;
     foc_control_mode mode = foc_control_mode::DISABLED;
     float d_axis_current_a = 0.0f;
     float q_axis_current_a = 0.0f;
@@ -111,31 +111,30 @@ struct foc_target
 struct foc_config
 {
     bool monitor_only = true;
-    bool open_loop_control_from_task = false;
-    uint8_t pole_pairs = 0U;
+    uint8_t pole_pairs = 0;
     int8_t rotor_direction = 1;
     float electrical_zero_offset_rad = 0.0f;
     float control_period_s = 0.00005f;
     float bus_voltage_v = 0.0f;
     float voltage_limit_v = 0.0f;
     float max_phase_current_a = 0.0f;
-    uint32_t rotor_extrapolation_limit_us = 2000U;
-    uint32_t rotor_hard_timeout_us = 5000U;
-    uint32_t rotor_slow_timeout_us = 50000U;
-    uint32_t command_timeout_ms = 100U;
-    uint32_t communication_error_limit = 10U;
-    uint32_t telemetry_divider = 20U;
-    uint16_t control_isr_divider = 1U;
+    uint32_t rotor_extrapolation_limit_us = 2000;
+    uint32_t rotor_hard_timeout_us = 5000;
+    uint32_t rotor_slow_timeout_us = 50000;
+    uint32_t command_timeout_ms = 100;
+    uint32_t communication_error_limit = 10;
+    uint32_t telemetry_divider = 20;
+    uint16_t control_isr_divider = 1;
     pi_config d_axis_pi{};
     pi_config q_axis_pi{};
 };
 
 struct foc_snapshot
 {
-    uint32_t sequence = 0U;
-    uint32_t timestamp_us = 0U;
+    uint32_t sequence = 0;
+    uint32_t timestamp_us = 0;
     foc_state state = foc_state::UNINITIALIZED;
-    uint32_t fault_flags = 0U;
+    uint32_t fault_flags = 0;
     bool monitor_only = true;
     bool output_active = false;
     rotor_sample rotor{};
@@ -147,9 +146,9 @@ struct foc_snapshot
     float d_axis_voltage_v = 0.0f;
     float q_axis_voltage_v = 0.0f;
     phase_duty duty{};
-    uint32_t control_sequence = 0U;
-    uint32_t bus_update_error_count = 0U;
-    uint32_t consecutive_bus_error_count = 0U;
+    uint32_t control_sequence = 0;
+    uint32_t bus_update_error_count = 0;
+    uint32_t consecutive_bus_error_count = 0;
 };
 
 constexpr uint32_t foc_fault_mask(foc_fault fault)

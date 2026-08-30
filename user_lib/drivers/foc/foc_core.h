@@ -20,7 +20,6 @@ namespace foc_core
     foc_result enable();
     void disable();
     foc_result clear_fault();
-    foc_result run_open_loop_from_task(uint32_t timestamp_us);
     foc_result run_control_from_isr(uint32_t timestamp_us);
     foc_result update_bus_sensors();
     foc_result update_safety(uint32_t timestamp_ms);

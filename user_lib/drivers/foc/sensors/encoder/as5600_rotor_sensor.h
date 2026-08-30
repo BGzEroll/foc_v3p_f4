@@ -31,10 +31,10 @@ class as5600_rotor_sensor : public rotor_sensor
         uint8_t device_address;
         topic::latest_topic<rotor_sample> sample_topic;
         int32_t accumulated_count = 0;
-        uint16_t previous_count = 0U;
-        uint32_t previous_timestamp_us = 0U;
-        uint32_t sequence = 0U;
-        uint32_t error_count = 0U;
+        uint16_t previous_count = 0;
+        uint32_t previous_timestamp_us = 0;
+        uint32_t sequence = 0;
+        uint32_t error_count = 0;
         bool initialized = false;
         bool first_sample = true;
 };

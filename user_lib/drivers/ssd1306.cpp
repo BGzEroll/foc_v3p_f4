@@ -377,11 +377,11 @@ spi_result ssd1306::init()
     };
 
     // 先保持旧工程已验证的逐字节 CS 时序，排除模块对连续命令事务的兼容差异。
-    for(uint16_t index = 0U;
+    for(uint16_t index = 0;
         index < (uint16_t)sizeof(INIT_COMMANDS);
         index++)
     {
-        result = write_commands(&INIT_COMMANDS[index], 1U);
+        result = write_commands(&INIT_COMMANDS[index], 1);
         if(result != spi_result::OK)
         {
             return result;
@@ -578,7 +578,7 @@ void ssd1306::show_bin_num(uint8_t line, uint8_t column, uint32_t number, uint8_
  */
 spi_result ssd1306::write_commands(const uint8_t *commands, uint16_t size)
 {
-    if(!commands || size == 0U)
+    if(!commands || size == 0)
     {
         return spi_result::INVALID_ARGUMENT;
     }
@@ -608,7 +608,7 @@ spi_result ssd1306::write_commands(const uint8_t *commands, uint16_t size)
  */
 spi_result ssd1306::write_data(const uint8_t *data, uint16_t size)
 {
-    if(!data || size == 0U)
+    if(!data || size == 0)
     {
         return spi_result::INVALID_ARGUMENT;
     }

@@ -2,8 +2,8 @@
 
 #include "system/sys_time.h"
 
-static constexpr uint8_t AS5600_RAW_ANGLE_REGISTER = 0x0CU;
-static constexpr uint16_t AS5600_RESOLUTION_COUNTS = 4096U;
+static constexpr uint8_t AS5600_RAW_ANGLE_REGISTER = 0x0C;
+static constexpr uint16_t AS5600_RESOLUTION_COUNTS = 4096;
 static constexpr int16_t AS5600_HALF_RESOLUTION_COUNTS = 2048;
 static constexpr float TWO_PI = 6.28318530717958647692f;
 static constexpr float COUNT_TO_RADIAN =
@@ -32,10 +32,10 @@ foc_result as5600_rotor_sensor::init()
     initialized = false;
     first_sample = true;
     accumulated_count = 0;
-    previous_count = 0U;
-    previous_timestamp_us = 0U;
-    sequence = 0U;
-    error_count = 0U;
+    previous_count = 0;
+    previous_timestamp_us = 0;
+    sequence = 0;
+    error_count = 0;
 
     if(!sample_topic.init())
     {
@@ -132,7 +132,7 @@ foc_result as5600_rotor_sensor::read_and_publish_sample()
 
     uint16_t raw_count = (uint16_t)(((uint16_t)raw_data[0] << 8) |
         raw_data[1]);
-    raw_count &= AS5600_RESOLUTION_COUNTS - 1U;
+    raw_count &= AS5600_RESOLUTION_COUNTS - 1;
 
     rotor_sample sample{};
     process_raw_angle(raw_count, sys_time::get_us_tick(), sample);
@@ -186,7 +186,7 @@ void as5600_rotor_sensor::process_raw_angle(uint16_t raw_count,
             (float)accumulated_count * COUNT_TO_RADIAN;
 
         uint32_t elapsed_us = timestamp_us - previous_timestamp_us;
-        if(elapsed_us > 0U)
+        if(elapsed_us > 0)
         {
             sample.mechanical_velocity_rad_s =
                 (float)delta_count * COUNT_TO_RADIAN * 1000000.0f /

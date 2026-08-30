@@ -28,12 +28,12 @@ static constexpr float ACCELEROMETER_SCALE_LSB_PER_G = 16384.0f;
 static constexpr float GYROSCOPE_SCALE_LSB_PER_DPS = 65.5f;
 static constexpr float TEMPERATURE_SCALE_LSB_PER_C = 340.0f;
 static constexpr float TEMPERATURE_OFFSET_C = 36.53f;
-static constexpr uint32_t MAX_UPDATE_INTERVAL_US = 100000U;
+static constexpr uint32_t MAX_UPDATE_INTERVAL_US = 100000;
 
-static constexpr uint32_t RESET_DELAY_MS = 100U;
-static constexpr uint32_t WAKE_DELAY_MS = 10U;
-static constexpr uint16_t CALIBRATION_WARMUP_SAMPLE_COUNT = 100U;
-static constexpr uint16_t CALIBRATION_SAMPLE_COUNT = 1000U;
+static constexpr uint32_t RESET_DELAY_MS = 100;
+static constexpr uint32_t WAKE_DELAY_MS = 10;
+static constexpr uint16_t CALIBRATION_WARMUP_SAMPLE_COUNT = 100;
+static constexpr uint16_t CALIBRATION_SAMPLE_COUNT = 1000;
 
 /**
  * @brief 从 MPU6050 大端寄存器数据中读取一个有符号 16 位值
@@ -96,7 +96,7 @@ i2c_result mpu6050::init(bool calibrate_gyroscope)
 {
     initialized = false;
     first_sample = true;
-    previous_timestamp_us = 0U;
+    previous_timestamp_us = 0;
     current_sample = {};
 
     i2c_result result = i2c.init();
@@ -123,10 +123,10 @@ i2c_result mpu6050::init(bool calibrate_gyroscope)
 
     vTaskDelay(pdMS_TO_TICKS(WAKE_DELAY_MS));
 
-    uint8_t device_id = 0U;
+    uint8_t device_id = 0;
     result = read_registers(MPU6050_WHO_AM_I_REGISTER,
         &device_id,
-        1U);
+        1);
     if(result != i2c_result::OK)
     {
         return result;
@@ -165,7 +165,7 @@ i2c_result mpu6050::init(bool calibrate_gyroscope)
         return result;
     }
 
-    for(uint8_t axis = 0U; axis < 3U; axis++)
+    for(uint8_t axis = 0; axis < 3; axis++)
     {
         gyroscope_offset_rad_s[axis] = 0.0f;
     }
@@ -252,7 +252,7 @@ i2c_result mpu6050::write_register(uint8_t register_address, uint8_t value)
     return i2c.write_bytes(device_address,
         register_address,
         &value,
-        1U);
+        1);
 }
 
 /**
@@ -264,7 +264,7 @@ i2c_result mpu6050::calibrate_gyroscope_offset()
 {
     uint8_t gyroscope_raw[6]{};
 
-    for(uint16_t sample_index = 0U;
+    for(uint16_t sample_index = 0;
         sample_index < CALIBRATION_WARMUP_SAMPLE_COUNT;
         sample_index++)
     {
@@ -279,7 +279,7 @@ i2c_result mpu6050::calibrate_gyroscope_offset()
 
     int64_t gyroscope_sum[3]{};
 
-    for(uint16_t sample_index = 0U;
+    for(uint16_t sample_index = 0;
         sample_index < CALIBRATION_SAMPLE_COUNT;
         sample_index++)
     {
@@ -291,14 +291,14 @@ i2c_result mpu6050::calibrate_gyroscope_offset()
             return result;
         }
 
-        for(uint8_t axis = 0U; axis < 3U; axis++)
+        for(uint8_t axis = 0; axis < 3; axis++)
         {
             gyroscope_sum[axis] += decode_int16_be(
-                &gyroscope_raw[axis * 2U]);
+                &gyroscope_raw[axis * 2]);
         }
     }
 
-    for(uint8_t axis = 0U; axis < 3U; axis++)
+    for(uint8_t axis = 0; axis < 3; axis++)
     {
         float average_raw = (float)gyroscope_sum[axis] /
             (float)CALIBRATION_SAMPLE_COUNT;
@@ -323,12 +323,12 @@ void mpu6050::process_raw_sample(uint32_t timestamp_us)
     float native_acceleration_g[3]{};
     float native_angular_velocity_rad_s[3]{};
 
-    for(uint8_t axis = 0U; axis < 3U; axis++)
+    for(uint8_t axis = 0; axis < 3; axis++)
     {
         int16_t raw_acceleration = decode_int16_be(
-            &raw_sample[axis * 2U]);
+            &raw_sample[axis * 2]);
         int16_t raw_gyroscope = decode_int16_be(
-            &raw_sample[8U + axis * 2U]);
+            &raw_sample[8 + axis * 2]);
 
         native_acceleration_g[axis] = (float)raw_acceleration /
             ACCELEROMETER_SCALE_LSB_PER_G;
@@ -371,7 +371,7 @@ void mpu6050::process_raw_sample(uint32_t timestamp_us)
 
     uint32_t elapsed_us = timestamp_us - previous_timestamp_us;
     previous_timestamp_us = timestamp_us;
-    if(elapsed_us == 0U || elapsed_us > MAX_UPDATE_INTERVAL_US)
+    if(elapsed_us == 0 || elapsed_us > MAX_UPDATE_INTERVAL_US)
     {
         return;
     }

@@ -60,7 +60,7 @@ class spi_dev
         StaticSemaphore_t completion_semaphore_storage{};
         TaskHandle_t transaction_owner = nullptr;
         GPIO_TypeDef *active_cs_port = nullptr;
-        uint16_t active_cs_pin = 0U;
+        uint16_t active_cs_pin = 0;
         bool initialized = false;
         bool transaction_active = false;
         volatile bool transfer_active = false;
@@ -86,9 +86,9 @@ static TickType_t milliseconds_to_ticks(uint32_t timeout_ms)
 {
     TickType_t ticks = pdMS_TO_TICKS(timeout_ms);
 
-    if(timeout_ms > 0U && ticks == 0U)
+    if(timeout_ms > 0 && ticks == 0)
     {
-        ticks = 1U;
+        ticks = 1;
     }
 
     return ticks;
@@ -105,27 +105,27 @@ static spi_result map_hal_error(SPI_HandleTypeDef *handle)
 {
     uint32_t error = HAL_SPI_GetError(handle);
 
-    if((error & HAL_SPI_ERROR_DMA) != 0U)
+    if((error & HAL_SPI_ERROR_DMA) != 0)
     {
         return spi_result::DMA_ERROR;
     }
 
-    if((error & HAL_SPI_ERROR_OVR) != 0U)
+    if((error & HAL_SPI_ERROR_OVR) != 0)
     {
         return spi_result::OVERRUN_ERROR;
     }
 
-    if((error & HAL_SPI_ERROR_MODF) != 0U)
+    if((error & HAL_SPI_ERROR_MODF) != 0)
     {
         return spi_result::MODE_FAULT;
     }
 
-    if((error & HAL_SPI_ERROR_FRE) != 0U)
+    if((error & HAL_SPI_ERROR_FRE) != 0)
     {
         return spi_result::FRAME_ERROR;
     }
 
-    if((error & HAL_SPI_ERROR_CRC) != 0U)
+    if((error & HAL_SPI_ERROR_CRC) != 0)
     {
         return spi_result::CRC_ERROR;
     }
@@ -259,7 +259,7 @@ spi_result spi_dev::cs_low(GPIO_TypeDef *port,
         return spi_result::NOT_INITIALIZED;
     }
 
-    if(!port || pin == 0U)
+    if(!port || pin == 0)
     {
         return spi_result::INVALID_ARGUMENT;
     }
@@ -319,7 +319,7 @@ spi_result spi_dev::cs_high(GPIO_TypeDef *port, uint16_t pin)
 
     HAL_GPIO_WritePin(active_cs_port, active_cs_pin, GPIO_PIN_SET);
     active_cs_port = nullptr;
-    active_cs_pin = 0U;
+    active_cs_pin = 0;
     transaction_owner = nullptr;
     transaction_active = false;
     xSemaphoreGive(mutex);
@@ -422,7 +422,7 @@ spi_result spi_dev::transfer_bytes(spi_transfer_direction direction,
         return spi_result::NOT_INITIALIZED;
     }
 
-    if(size == 0U ||
+    if(size == 0 ||
         (direction == spi_transfer_direction::RECEIVE && !rx_data) ||
         (direction == spi_transfer_direction::TRANSMIT && !tx_data) ||
         (direction == spi_transfer_direction::TRANSMIT_RECEIVE &&
@@ -443,7 +443,7 @@ spi_result spi_dev::transfer_bytes(spi_transfer_direction direction,
         return owner_result;
     }
 
-    while(xSemaphoreTake(completion_semaphore, 0U) == pdTRUE)
+    while(xSemaphoreTake(completion_semaphore, 0) == pdTRUE)
     {
     }
 
@@ -496,7 +496,7 @@ spi_result spi_dev::transfer_bytes(spi_transfer_direction direction,
  */
 spi_result spi_dev::validate_task_context() const
 {
-    if(__get_IPSR() != 0U ||
+    if(__get_IPSR() != 0 ||
         xTaskGetSchedulerState() != taskSCHEDULER_RUNNING)
     {
         return spi_result::INVALID_CONTEXT;
@@ -536,7 +536,7 @@ bool spi_dev::recover_bus()
     bool recovered = HAL_SPI_DeInit(handle) == HAL_OK &&
         HAL_SPI_Init(handle) == HAL_OK;
 
-    while(xSemaphoreTake(completion_semaphore, 0U) == pdTRUE)
+    while(xSemaphoreTake(completion_semaphore, 0) == pdTRUE)
     {
     }
 

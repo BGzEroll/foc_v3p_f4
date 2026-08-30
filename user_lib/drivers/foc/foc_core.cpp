@@ -7,8 +7,8 @@
 
 struct control_telemetry
 {
-    uint32_t sequence = 0U;
-    uint32_t timestamp_us = 0U;
+    uint32_t sequence = 0;
+    uint32_t timestamp_us = 0;
     rotor_sample rotor{};
     phase_current_sample current{};
     float rotor_sample_age_ms = 0.0f;
@@ -21,8 +21,8 @@ struct control_telemetry
 
 struct fault_request
 {
-    uint32_t sequence = 0U;
-    uint32_t fault_flags = 0U;
+    uint32_t sequence = 0;
+    uint32_t fault_flags = 0;
 };
 
 struct foc_context
@@ -35,14 +35,14 @@ struct foc_context
     pi_state q_axis_pi{};
     phase_current_sample fault_current{};
     volatile foc_state state = foc_state::UNINITIALIZED;
-    volatile uint32_t fault_flags = 0U;
-    uint32_t target_sequence = 0U;
-    uint32_t control_isr_prescaler = 0U;
-    uint32_t control_sequence = 0U;
-    uint32_t snapshot_sequence = 0U;
-    uint32_t fault_request_sequence = 0U;
-    volatile uint32_t bus_update_error_count = 0U;
-    volatile uint32_t consecutive_bus_error_count = 0U;
+    volatile uint32_t fault_flags = 0;
+    uint32_t target_sequence = 0;
+    uint32_t control_isr_prescaler = 0;
+    uint32_t control_sequence = 0;
+    uint32_t snapshot_sequence = 0;
+    uint32_t fault_request_sequence = 0;
+    volatile uint32_t bus_update_error_count = 0;
+    volatile uint32_t consecutive_bus_error_count = 0;
     bool rotor_initialized = false;
     bool current_initialized = false;
     bool driver_initialized = false;
@@ -85,18 +85,18 @@ static bool valid_config(const foc_config &config)
         config.control_period_s <= 0.0f ||
         config.rotor_extrapolation_limit_us >
             config.rotor_hard_timeout_us ||
-        config.rotor_hard_timeout_us == 0U ||
+        config.rotor_hard_timeout_us == 0 ||
         config.rotor_slow_timeout_us < config.rotor_hard_timeout_us ||
-        config.communication_error_limit == 0U ||
-        config.telemetry_divider == 0U ||
-        config.control_isr_divider == 0U)
+        config.communication_error_limit == 0 ||
+        config.telemetry_divider == 0 ||
+        config.control_isr_divider == 0)
     {
         return false;
     }
 
     if(config.monitor_only){return true;}
 
-    return config.pole_pairs > 0U &&
+    return config.pole_pairs > 0 &&
         isfinite(config.bus_voltage_v) && config.bus_voltage_v > 0.0f &&
         isfinite(config.voltage_limit_v) && config.voltage_limit_v > 0.0f &&
         config.voltage_limit_v <= config.bus_voltage_v &&
@@ -173,7 +173,7 @@ static uint32_t sample_age_us(uint32_t timestamp_us,
     uint32_t sample_timestamp_us)
 {
     uint32_t elapsed = timestamp_us - sample_timestamp_us;
-    return elapsed <= INT32_MAX ? elapsed : 0U;
+    return elapsed <= INT32_MAX ? elapsed : 0;
 }
 
 /**
@@ -185,7 +185,7 @@ static void publish_telemetry_from_isr(
     const control_telemetry &telemetry)
 {
     if(core_context.control_sequence %
-        core_context.config.telemetry_divider != 0U)
+        core_context.config.telemetry_divider != 0)
     {
         return;
     }
@@ -193,26 +193,6 @@ static void publish_telemetry_from_isr(
     BaseType_t higher_priority_task_woken = pdFALSE;
     if(!telemetry_topic.publish_from_isr(telemetry,
         higher_priority_task_woken))
-    {
-        latch_fault(foc_fault_mask(foc_fault::INTERNAL));
-    }
-}
-
-/**
- * @brief 发布任务控制路径的轻量遥测
- *
- * @param telemetry 本周期遥测数据
- */
-static void publish_telemetry_from_task(
-    const control_telemetry &telemetry)
-{
-    if(core_context.control_sequence %
-        core_context.config.telemetry_divider != 0U)
-    {
-        return;
-    }
-
-    if(!telemetry_topic.publish(telemetry))
     {
         latch_fault(foc_fault_mask(foc_fault::INTERNAL));
     }
@@ -228,7 +208,7 @@ static void publish_current_sample_from_isr(
     bool force_publish = false)
 {
     if(!force_publish &&
-        sample.sequence % core_context.config.telemetry_divider != 0U)
+        sample.sequence % core_context.config.telemetry_divider != 0)
     {
         return;
     }
@@ -433,7 +413,7 @@ foc_result foc_core::enable()
 {
     if(!core_context.initialized){return foc_result::NOT_INITIALIZED;}
     if(core_context.config.monitor_only){return foc_result::DISABLED;}
-    if(core_context.fault_flags != 0U){return foc_result::INVALID_STATE;}
+    if(core_context.fault_flags != 0){return foc_result::INVALID_STATE;}
     if(!core_context.rotor_initialized ||
         !core_context.current_initialized ||
         !core_context.driver_initialized ||
@@ -472,118 +452,11 @@ void foc_core::disable()
 
     foc_math::reset_pi(core_context.d_axis_pi);
     foc_math::reset_pi(core_context.q_axis_pi);
-    if(core_context.initialized && core_context.fault_flags == 0U)
+    if(core_context.initialized && core_context.fault_flags == 0)
     {
         core_context.state = core_context.config.monitor_only ?
             foc_state::MONITORING : foc_state::READY;
     }
-}
-
-/**
- * @brief 在 RTOS 任务中执行一次开环电压控制
- *
- * @param timestamp_us 本次控制时间戳
- *
- * @return 本次任务控制结果
- */
-foc_result foc_core::run_open_loop_from_task(uint32_t timestamp_us)
-{
-    if(!core_context.initialized){return foc_result::NOT_INITIALIZED;}
-    if(!core_context.config.open_loop_control_from_task)
-    {
-        return foc_result::DISABLED;
-    }
-    if(core_context.state != foc_state::RUNNING)
-    {
-        return foc_result::DISABLED;
-    }
-    if(core_context.fault_flags != 0U)
-    {
-        return foc_result::OUTPUT_FAULT;
-    }
-    if(core_context.driver->fault_active_from_isr())
-    {
-        latch_fault(foc_fault_mask(foc_fault::DRIVER));
-        return foc_result::DRIVER_FAULT;
-    }
-
-    foc_target target{};
-    if(!target_topic.peek(target) ||
-        target.mode != foc_control_mode::OPEN_LOOP_VOLTAGE)
-    {
-        latch_fault(foc_fault_mask(foc_fault::COMMAND_TIMEOUT));
-        return foc_result::INVALID_STATE;
-    }
-
-    rotor_sample rotor{};
-    foc_result rotor_result = core_context.rotor->read_task(rotor);
-    if(rotor_result != foc_result::OK || !rotor.valid)
-    {
-        latch_fault(foc_fault_mask(foc_fault::ROTOR_NOT_READY));
-        return rotor_result;
-    }
-
-    uint32_t rotor_age_us = sample_age_us(timestamp_us,
-        rotor.timestamp_us);
-    if(rotor_age_us > core_context.config.rotor_hard_timeout_us)
-    {
-        latch_fault(foc_fault_mask(foc_fault::ROTOR_STALE));
-        return foc_result::SAMPLE_STALE;
-    }
-
-    uint32_t target_age_us = timestamp_us -
-        target.electrical_angle_timestamp_us;
-    float electrical_angle = foc_math::normalize_angle(
-        target.electrical_angle_rad +
-        target.electrical_velocity_rad_s *
-        (float)target_age_us * 1.0e-6f);
-    d_q_value rotating_voltage{};
-    rotating_voltage.d = target.d_axis_voltage_v;
-    rotating_voltage.q = target.q_axis_voltage_v;
-    foc_math::limit_vector(rotating_voltage,
-        core_context.config.voltage_limit_v);
-    alpha_beta_value stationary_voltage =
-        foc_math::inverse_park_transform(rotating_voltage,
-            electrical_angle);
-    phase_duty duty{};
-    if(!foc_math::calculate_svpwm(stationary_voltage,
-        core_context.config.bus_voltage_v,
-        duty))
-    {
-        latch_fault(foc_fault_mask(foc_fault::OUTPUT_RANGE));
-        return foc_result::OUTPUT_FAULT;
-    }
-
-    foc_result output_result =
-        core_context.driver->write_duty_from_isr(duty);
-    if(output_result != foc_result::OK)
-    {
-        latch_fault(foc_fault_mask(foc_fault::OUTPUT_RANGE));
-        return output_result;
-    }
-
-    phase_current_sample current{};
-    current_sample_topic.peek(current);
-    alpha_beta_value stationary_current =
-        foc_math::clarke_transform(current);
-    d_q_value rotating_current = foc_math::park_transform(
-        stationary_current,
-        electrical_angle);
-
-    core_context.control_sequence++;
-    control_telemetry telemetry{};
-    telemetry.sequence = core_context.control_sequence;
-    telemetry.timestamp_us = timestamp_us;
-    telemetry.rotor = rotor;
-    telemetry.current = current;
-    telemetry.rotor_sample_age_ms = (float)rotor_age_us * 0.001f;
-    telemetry.d_axis_current_a = rotating_current.d;
-    telemetry.q_axis_current_a = rotating_current.q;
-    telemetry.d_axis_voltage_v = rotating_voltage.d;
-    telemetry.q_axis_voltage_v = rotating_voltage.q;
-    telemetry.duty = duty;
-    publish_telemetry_from_task(telemetry);
-    return foc_result::OK;
 }
 
 /**
@@ -601,9 +474,9 @@ foc_result foc_core::clear_fault()
         return foc_result::DRIVER_FAULT;
     }
 
-    core_context.fault_flags = 0U;
+    core_context.fault_flags = 0;
     core_context.fault_current_valid = false;
-    core_context.consecutive_bus_error_count = 0U;
+    core_context.consecutive_bus_error_count = 0;
     fault_request empty_request{};
     empty_request.sequence = ++core_context.fault_request_sequence;
     if(!fault_request_topic.publish(empty_request))
@@ -657,7 +530,7 @@ foc_result foc_core::run_control_from_isr(uint32_t timestamp_us)
 
     fault_request requested_fault{};
     if(fault_request_topic.peek_from_isr(requested_fault) &&
-        requested_fault.fault_flags != 0U)
+        requested_fault.fault_flags != 0)
     {
         latch_fault(requested_fault.fault_flags);
         return foc_result::OUTPUT_FAULT;
@@ -691,14 +564,9 @@ foc_result foc_core::run_control_from_isr(uint32_t timestamp_us)
         return foc_result::SENSOR_ERROR;
     }
 
-    if(core_context.config.open_loop_control_from_task)
-    {
-        return foc_result::OK;
-    }
-
     core_context.control_isr_prescaler++;
     if(core_context.control_isr_prescaler %
-        core_context.config.control_isr_divider != 0U)
+        core_context.config.control_isr_divider != 0)
     {
         return foc_result::OK;
     }
@@ -846,7 +714,7 @@ foc_result foc_core::update_bus_sensors()
 
     if(result == foc_result::OK)
     {
-        core_context.consecutive_bus_error_count = 0U;
+        core_context.consecutive_bus_error_count = 0;
     }
     else
     {
@@ -872,10 +740,10 @@ foc_result foc_core::update_safety(uint32_t timestamp_ms)
     foc_result rotor_result = core_context.rotor_initialized ?
         core_context.rotor->read_task(rotor) :
         foc_result::SAMPLE_NOT_READY;
-    uint32_t now_us = timestamp_ms * 1000U;
+    uint32_t now_us = timestamp_ms * 1000;
     uint32_t rotor_age_us = rotor_result == foc_result::OK ?
         sample_age_us(now_us, rotor.timestamp_us) : now_us;
-    uint32_t new_fault_flags = 0U;
+    uint32_t new_fault_flags = 0;
     foc_target target{};
     target_topic.peek(target);
 
@@ -905,7 +773,7 @@ foc_result foc_core::update_safety(uint32_t timestamp_ms)
         new_fault_flags |= foc_fault_mask(foc_fault::COMMAND_TIMEOUT);
     }
 
-    if(new_fault_flags != 0U)
+    if(new_fault_flags != 0)
     {
         fault_request request{};
         request.sequence = ++core_context.fault_request_sequence;
@@ -963,7 +831,7 @@ foc_result foc_core::update_safety(uint32_t timestamp_ms)
         return foc_result::TOPIC_ERROR;
     }
 
-    return new_fault_flags == 0U ? foc_result::OK :
+    return new_fault_flags == 0 ? foc_result::OK :
         foc_result::SENSOR_ERROR;
 }
 
@@ -1018,7 +886,7 @@ foc_result foc_core::init(const foc_config &config)
     }
 
     core_context.config = config;
-    core_context.fault_flags = 0U;
+    core_context.fault_flags = 0;
     core_context.fault_current_valid = false;
     core_context.calibration_output_active = false;
     core_context.state = config.monitor_only ? foc_state::MONITORING :

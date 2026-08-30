@@ -8,10 +8,10 @@ struct tim1_phase_driver_config
 {
     TIM_HandleTypeDef *timer = nullptr;
     GPIO_TypeDef *enable_port = nullptr;
-    uint16_t enable_pin = 0U;
-    uint8_t phase_a_channel = 1U;
-    uint8_t phase_b_channel = 2U;
-    uint8_t phase_c_channel = 3U;
+    uint16_t enable_pin = 0;
+    uint8_t phase_a_channel = 1;
+    uint8_t phase_b_channel = 2;
+    uint8_t phase_c_channel = 3;
     bool enable_active_high = true;
     bool allow_output = false;
 };

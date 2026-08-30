@@ -24,7 +24,7 @@ enum class foc_commissioning_stage : uint8_t
 
 struct foc_commissioning_status
 {
-    uint32_t sequence = 0U;
+    uint32_t sequence = 0;
     foc_commissioning_stage stage =
         foc_commissioning_stage::WAIT_CALIBRATION;
     foc_result result = foc_result::NOT_READY;

@@ -23,7 +23,7 @@ foc_result stm32_two_shunt_current_sensor::init()
     initialized = false;
     calibrated = false;
     calibrating = false;
-    sequence = 0U;
+    sequence = 0;
 
     if(!config.adc || !config.adc->Instance ||
         !isfinite(config.ampere_per_count_a) ||
@@ -51,12 +51,12 @@ foc_result stm32_two_shunt_current_sensor::begin_calibration_task(
     uint32_t sample_count)
 {
     if(!initialized){return foc_result::NOT_INITIALIZED;}
-    if(sample_count == 0U){return foc_result::INVALID_ARGUMENT;}
+    if(sample_count == 0){return foc_result::INVALID_ARGUMENT;}
 
-    calibration_sum_a = 0U;
-    calibration_sum_b = 0U;
+    calibration_sum_a = 0;
+    calibration_sum_b = 0;
     calibration_target = sample_count;
-    calibration_collected = 0U;
+    calibration_collected = 0;
     calibrated = false;
     calibrating = true;
     return foc_result::OK;
@@ -71,7 +71,7 @@ foc_result stm32_two_shunt_current_sensor::finish_calibration_task()
 {
     if(!initialized){return foc_result::NOT_INITIALIZED;}
     if(calibration_collected < calibration_target ||
-        calibration_target == 0U)
+        calibration_target == 0)
     {
         return foc_result::CALIBRATING;
     }

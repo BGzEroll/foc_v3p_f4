@@ -6,8 +6,8 @@
 
 struct mpu6050_sample
 {
-    uint32_t sequence = 0U;
-    uint32_t timestamp_us = 0U;
+    uint32_t sequence = 0;
+    uint32_t timestamp_us = 0;
     float temperature_c = 0.0f;
     float acceleration_g[3]{};
     float angular_velocity_rad_s[3]{};
@@ -43,7 +43,7 @@ class mpu6050
         uint8_t raw_sample[14]{};
         float gyroscope_offset_rad_s[3]{};
         mpu6050_sample current_sample{};
-        uint32_t previous_timestamp_us = 0U;
+        uint32_t previous_timestamp_us = 0;
         bool initialized = false;
         bool first_sample = true;
 };

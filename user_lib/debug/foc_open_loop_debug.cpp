@@ -11,22 +11,22 @@
 #include <stdint.h>
 #include <stdio.h>
 
-static constexpr uint16_t DEBUG_TASK_STACK_DEPTH = 384U;
-static constexpr uint16_t OBSERVER_TASK_STACK_DEPTH = 512U;
-static constexpr UBaseType_t DEBUG_TASK_PRIORITY = tskIDLE_PRIORITY + 4U;
-static constexpr UBaseType_t OBSERVER_TASK_PRIORITY = tskIDLE_PRIORITY + 3U;
-static constexpr uint32_t STARTUP_DELAY_MS = 1000U;
-static constexpr uint32_t STATIC_VECTOR_HOLD_TIME_MS = 1500U;
-static constexpr uint32_t ALIGNMENT_TIME_MS = 1000U;
-static constexpr uint32_t SLOW_RUN_TIME_MS = 8000U;
-static constexpr uint32_t TEST_PAUSE_MS = 2000U;
-static constexpr uint32_t TASK_UPDATE_PERIOD_MS = 1U;
-static constexpr uint32_t OBSERVER_UPDATE_PERIOD_MS = 2U;
-static constexpr uint32_t OBSERVER_OUTPUT_PERIOD_MS = 100U;
-static constexpr uint32_t INTERRUPT_EVENT_DIVIDER = 2U;
-static constexpr uint8_t AS5600_I2C_BUS_ID = 0U;
-static constexpr uint8_t AS5600_I2C_ADDRESS = 0x36U;
-static constexpr uint8_t DEBUG_UART_BUS_ID = 0U;
+static constexpr uint16_t DEBUG_TASK_STACK_DEPTH = 384;
+static constexpr uint16_t OBSERVER_TASK_STACK_DEPTH = 512;
+static constexpr UBaseType_t DEBUG_TASK_PRIORITY = tskIDLE_PRIORITY + 4;
+static constexpr UBaseType_t OBSERVER_TASK_PRIORITY = tskIDLE_PRIORITY + 3;
+static constexpr uint32_t STARTUP_DELAY_MS = 1000;
+static constexpr uint32_t STATIC_VECTOR_HOLD_TIME_MS = 1500;
+static constexpr uint32_t ALIGNMENT_TIME_MS = 1000;
+static constexpr uint32_t SLOW_RUN_TIME_MS = 8000;
+static constexpr uint32_t TEST_PAUSE_MS = 2000;
+static constexpr uint32_t TASK_UPDATE_PERIOD_MS = 1;
+static constexpr uint32_t OBSERVER_UPDATE_PERIOD_MS = 2;
+static constexpr uint32_t OBSERVER_OUTPUT_PERIOD_MS = 100;
+static constexpr uint32_t INTERRUPT_EVENT_DIVIDER = 2;
+static constexpr uint8_t AS5600_I2C_BUS_ID = 0;
+static constexpr uint8_t AS5600_I2C_ADDRESS = 0x36;
+static constexpr uint8_t DEBUG_UART_BUS_ID = 0;
 static constexpr float BUS_VOLTAGE_V = 12.0f;
 static constexpr float TEST_VOLTAGE_V = 3.0f;
 static constexpr float TASK_MECHANICAL_VELOCITY_RAD_S = 1.0f;
@@ -35,7 +35,7 @@ static constexpr float MOTOR_POLE_PAIRS = 7.0f;
 static constexpr float TWO_PI = 6.28318530717958647692f;
 static constexpr float STATIC_VECTOR_STEP_RAD = TWO_PI / 6.0f;
 static constexpr float SQRT_THREE_OVER_TWO = 0.86602540378443864676f;
-static constexpr uint8_t STATIC_VECTOR_COUNT = 6U;
+static constexpr uint8_t STATIC_VECTOR_COUNT = 6;
 
 enum class debug_stage : uint8_t
 {
@@ -51,19 +51,19 @@ enum class debug_stage : uint8_t
 };
 
 static volatile debug_stage current_stage = debug_stage::STARTUP;
-static volatile uint8_t static_vector_index = 0U;
-static volatile uint32_t task_update_count = 0U;
-static volatile uint32_t interrupt_event_count = 0U;
-static volatile uint32_t interrupt_update_count = 0U;
-static volatile uint32_t interrupt_last_timestamp_us = 0U;
+static volatile uint8_t static_vector_index = 0;
+static volatile uint32_t task_update_count = 0;
+static volatile uint32_t interrupt_event_count = 0;
+static volatile uint32_t interrupt_update_count = 0;
+static volatile uint32_t interrupt_last_timestamp_us = 0;
 static volatile float interrupt_electrical_angle_rad = 0.0f;
 static volatile float interrupt_electrical_velocity_rad_s = 0.0f;
 static volatile bool interrupt_test_active = false;
 static volatile bool observer_valid = false;
-static volatile uint16_t observer_raw_count = 0U;
+static volatile uint16_t observer_raw_count = 0;
 static volatile int32_t observer_full_angle_millirad = 0;
-static volatile uint32_t observer_sequence = 0U;
-static volatile uint32_t observer_error_count = 0U;
+static volatile uint32_t observer_sequence = 0;
+static volatile uint32_t observer_error_count = 0;
 static volatile int32_t static_vector_angle_millirad[STATIC_VECTOR_COUNT]{};
 static volatile int32_t task_start_angle_millirad = 0;
 static volatile int32_t task_end_angle_millirad = 0;
@@ -109,7 +109,7 @@ static void write_voltage_vector(float electrical_angle_rad)
     float phase_a_duty = 0.5f + phase_a_voltage / BUS_VOLTAGE_V;
     float phase_b_duty = 0.5f + phase_b_voltage / BUS_VOLTAGE_V;
     float phase_c_duty = 0.5f + phase_c_voltage / BUS_VOLTAGE_V;
-    uint32_t period = htim1.Init.Period + 1U;
+    uint32_t period = htim1.Init.Period + 1;
 
     TIM1->CCR1 = (uint32_t)(phase_c_duty * (float)period);
     TIM1->CCR2 = (uint32_t)(phase_b_duty * (float)period);
@@ -121,7 +121,7 @@ static void write_voltage_vector(float electrical_angle_rad)
  */
 static void write_neutral_duty()
 {
-    uint32_t neutral_compare = (htim1.Init.Period + 1U) / 2U;
+    uint32_t neutral_compare = (htim1.Init.Period + 1) / 2;
     TIM1->CCR1 = neutral_compare;
     TIM1->CCR2 = neutral_compare;
     TIM1->CCR3 = neutral_compare;
@@ -209,7 +209,7 @@ static void output_observer_status()
         "angle_mrad=%ld sequence=%lu errors=%lu\r\n",
         (unsigned int)current_stage,
         (unsigned int)static_vector_index,
-        observer_valid ? 1U : 0U,
+        observer_valid ? 1 : 0,
         (unsigned int)observer_raw_count,
         (long)observer_full_angle_millirad,
         (unsigned long)observer_sequence,
@@ -288,7 +288,7 @@ static void run_static_vector_test()
     current_stage = debug_stage::STATIC_VECTOR_TEST;
     enable_output();
 
-    for(uint8_t index = 0U; index < STATIC_VECTOR_COUNT; index++)
+    for(uint8_t index = 0; index < STATIC_VECTOR_COUNT; index++)
     {
         static_vector_index = index;
         write_voltage_vector((float)index * STATIC_VECTOR_STEP_RAD);
@@ -344,8 +344,8 @@ static void run_task_test()
  */
 static void start_interrupt_output(float electrical_velocity_rad_s)
 {
-    interrupt_event_count = 0U;
-    interrupt_update_count = 0U;
+    interrupt_event_count = 0;
+    interrupt_update_count = 0;
     interrupt_electrical_angle_rad = 0.0f;
     interrupt_electrical_velocity_rad_s = electrical_velocity_rad_s;
     interrupt_last_timestamp_us = sys_time::get_us_tick();
@@ -353,7 +353,7 @@ static void start_interrupt_output(float electrical_velocity_rad_s)
 
     __HAL_TIM_CLEAR_IT(&htim1, TIM_IT_CC4);
     HAL_NVIC_ClearPendingIRQ(TIM1_CC_IRQn);
-    HAL_NVIC_SetPriority(TIM1_CC_IRQn, 5U, 0U);
+    HAL_NVIC_SetPriority(TIM1_CC_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(TIM1_CC_IRQn);
     __HAL_TIM_ENABLE_IT(&htim1, TIM_IT_CC4);
     enable_output();
@@ -379,7 +379,7 @@ static void update_from_interrupt()
 {
     interrupt_event_count++;
     if(!interrupt_test_active ||
-        interrupt_event_count % INTERRUPT_EVENT_DIVIDER != 0U)
+        interrupt_event_count % INTERRUPT_EVENT_DIVIDER != 0)
     {
         return;
     }

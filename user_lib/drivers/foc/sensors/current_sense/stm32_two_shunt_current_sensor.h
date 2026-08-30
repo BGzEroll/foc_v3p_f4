@@ -33,13 +33,13 @@ class stm32_two_shunt_current_sensor : public current_sensor
 
     private:
         stm32_two_shunt_current_config config;
-        uint64_t calibration_sum_a = 0U;
-        uint64_t calibration_sum_b = 0U;
-        uint32_t calibration_target = 0U;
-        volatile uint32_t calibration_collected = 0U;
+        uint64_t calibration_sum_a = 0;
+        uint64_t calibration_sum_b = 0;
+        uint32_t calibration_target = 0;
+        volatile uint32_t calibration_collected = 0;
         float offset_a = 0.0f;
         float offset_b = 0.0f;
-        uint32_t sequence = 0U;
+        uint32_t sequence = 0;
         bool initialized = false;
         volatile bool calibrating = false;
         bool calibrated = false;

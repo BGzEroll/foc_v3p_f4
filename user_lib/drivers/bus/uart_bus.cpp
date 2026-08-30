@@ -84,9 +84,9 @@ static TickType_t milliseconds_to_ticks(uint32_t timeout_ms)
 {
     TickType_t ticks = pdMS_TO_TICKS(timeout_ms);
 
-    if(timeout_ms > 0U && ticks == 0U)
+    if(timeout_ms > 0 && ticks == 0)
     {
-        ticks = 1U;
+        ticks = 1;
     }
 
     return ticks;
@@ -103,27 +103,27 @@ static uart_result map_hal_error(UART_HandleTypeDef *handle)
 {
     uint32_t error = HAL_UART_GetError(handle);
 
-    if((error & HAL_UART_ERROR_DMA) != 0U)
+    if((error & HAL_UART_ERROR_DMA) != 0)
     {
         return uart_result::DMA_ERROR;
     }
 
-    if((error & HAL_UART_ERROR_ORE) != 0U)
+    if((error & HAL_UART_ERROR_ORE) != 0)
     {
         return uart_result::OVERRUN_ERROR;
     }
 
-    if((error & HAL_UART_ERROR_NE) != 0U)
+    if((error & HAL_UART_ERROR_NE) != 0)
     {
         return uart_result::NOISE_ERROR;
     }
 
-    if((error & HAL_UART_ERROR_FE) != 0U)
+    if((error & HAL_UART_ERROR_FE) != 0)
     {
         return uart_result::FRAME_ERROR;
     }
 
-    if((error & HAL_UART_ERROR_PE) != 0U)
+    if((error & HAL_UART_ERROR_PE) != 0)
     {
         return uart_result::PARITY_ERROR;
     }
@@ -229,7 +229,7 @@ uart_result uart_dev::init()
     tx_completion_semaphore =
         xSemaphoreCreateBinaryStatic(&tx_completion_semaphore_storage);
     rx_stream = xStreamBufferCreateStatic(UART_RX_STREAM_STORAGE_SIZE,
-        1U,
+        1,
         rx_stream_storage,
         &rx_stream_control);
 
@@ -242,10 +242,10 @@ uart_result uart_dev::init()
         return uart_result::INIT_FAILED;
     }
 
-    rx_dma_position = 0U;
+    rx_dma_position = 0;
     receive_error = uart_result::OK;
-    receive_error_count = 0U;
-    receive_dropped_bytes = 0U;
+    receive_error_count = 0;
+    receive_dropped_bytes = 0;
     tx_result = uart_result::OK;
     initialized = true;
 
@@ -279,19 +279,19 @@ uart_result uart_dev::read_bytes(uint8_t *data,
     uint32_t read_timeout_ms,
     uint32_t lock_timeout_ms)
 {
-    received_size = 0U;
+    received_size = 0;
 
     if(!initialized)
     {
         return uart_result::NOT_INITIALIZED;
     }
 
-    if(!data || max_size == 0U)
+    if(!data || max_size == 0)
     {
         return uart_result::INVALID_ARGUMENT;
     }
 
-    if(__get_IPSR() != 0U ||
+    if(__get_IPSR() != 0 ||
         xTaskGetSchedulerState() != taskSCHEDULER_RUNNING)
     {
         return uart_result::INVALID_CONTEXT;
@@ -319,7 +319,7 @@ uart_result uart_dev::read_bytes(uint8_t *data,
 
     xSemaphoreGive(rx_mutex);
 
-    if(read_size == 0U && read_timeout_ms > 0U)
+    if(read_size == 0 && read_timeout_ms > 0)
     {
         return uart_result::READ_TIMEOUT;
     }
@@ -347,12 +347,12 @@ uart_result uart_dev::write_bytes(const uint8_t *data,
         return uart_result::NOT_INITIALIZED;
     }
 
-    if(!data || size == 0U)
+    if(!data || size == 0)
     {
         return uart_result::INVALID_ARGUMENT;
     }
 
-    if(__get_IPSR() != 0U ||
+    if(__get_IPSR() != 0 ||
         xTaskGetSchedulerState() != taskSCHEDULER_RUNNING)
     {
         return uart_result::INVALID_CONTEXT;
@@ -364,7 +364,7 @@ uart_result uart_dev::write_bytes(const uint8_t *data,
         return uart_result::LOCK_TIMEOUT;
     }
 
-    while(xSemaphoreTake(tx_completion_semaphore, 0U) == pdTRUE)
+    while(xSemaphoreTake(tx_completion_semaphore, 0) == pdTRUE)
     {
     }
 
@@ -458,7 +458,7 @@ uart_result uart_dev::ensure_receive_active()
         return uart_result::RECOVERY_FAILED;
     }
 
-    rx_dma_position = 0U;
+    rx_dma_position = 0;
     HAL_StatusTypeDef status = HAL_UARTEx_ReceiveToIdle_DMA(handle,
         rx_dma_buffer,
         UART_RX_DMA_BUFFER_SIZE);
@@ -478,7 +478,7 @@ uart_result uart_dev::ensure_receive_active()
  */
 bool uart_dev::restart_receive_from_isr()
 {
-    rx_dma_position = 0U;
+    rx_dma_position = 0;
     HAL_StatusTypeDef status = HAL_UARTEx_ReceiveToIdle_DMA(handle,
         rx_dma_buffer,
         UART_RX_DMA_BUFFER_SIZE);
@@ -495,7 +495,7 @@ bool uart_dev::recover_transmit()
 {
     bool recovered = HAL_UART_AbortTransmit(handle) == HAL_OK;
 
-    while(xSemaphoreTake(tx_completion_semaphore, 0U) == pdTRUE)
+    while(xSemaphoreTake(tx_completion_semaphore, 0) == pdTRUE)
     {
     }
 
@@ -523,7 +523,7 @@ void uart_dev::send_received_chunk_from_isr(const uint8_t *data,
     uint16_t size,
     BaseType_t &higher_priority_task_woken)
 {
-    if(size == 0U)
+    if(size == 0)
     {
         return;
     }
@@ -553,7 +553,7 @@ void uart_dev::receive_event_from_isr(uint16_t position)
     // 整缓冲区完成后 HAL 还可能报告一次 position == size 的 IDLE 事件。
     if(event_type == HAL_UART_RXEVENT_IDLE &&
         position == UART_RX_DMA_BUFFER_SIZE &&
-        rx_dma_position == 0U)
+        rx_dma_position == 0)
     {
         return;
     }
@@ -577,7 +577,7 @@ void uart_dev::receive_event_from_isr(uint16_t position)
             higher_priority_task_woken);
     }
 
-    rx_dma_position = position == UART_RX_DMA_BUFFER_SIZE ? 0U : position;
+    rx_dma_position = position == UART_RX_DMA_BUFFER_SIZE ? 0 : position;
     portYIELD_FROM_ISR(higher_priority_task_woken);
 }
 
@@ -671,7 +671,7 @@ uart_result uart_bus::read_bytes(uint8_t *data,
     uart_dev *device = get_dev(bus_id);
     if(!device)
     {
-        received_size = 0U;
+        received_size = 0;
         return uart_result::INVALID_BUS;
     }
 
@@ -717,7 +717,7 @@ uart_result uart_bus::write_bytes(const uint8_t *data,
 uint32_t uart_bus::rx_dropped_bytes() const
 {
     uart_dev *device = get_dev(bus_id);
-    return device ? device->rx_dropped_bytes() : 0U;
+    return device ? device->rx_dropped_bytes() : 0;
 }
 
 /**
@@ -728,7 +728,7 @@ uint32_t uart_bus::rx_dropped_bytes() const
 uint32_t uart_bus::rx_error_count() const
 {
     uart_dev *device = get_dev(bus_id);
-    return device ? device->rx_error_count() : 0U;
+    return device ? device->rx_error_count() : 0;
 }
 
 /**

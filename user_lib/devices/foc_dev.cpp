@@ -14,24 +14,19 @@
 #include "task.h"
 #include <math.h>
 
-static constexpr uint8_t AS5600_I2C_BUS_ID = 0U;
-static constexpr uint8_t AS5600_I2C_ADDRESS = 0x36U;
-static constexpr uint16_t FOC_SENSOR_TASK_STACK_DEPTH = 512U;
-static constexpr uint16_t FOC_OPEN_LOOP_TASK_STACK_DEPTH = 384U;
-static constexpr uint16_t FOC_SAFETY_TASK_STACK_DEPTH = 768U;
+static constexpr uint8_t AS5600_I2C_BUS_ID = 0;
+static constexpr uint8_t AS5600_I2C_ADDRESS = 0x36;
+static constexpr uint16_t FOC_SENSOR_TASK_STACK_DEPTH = 512;
+static constexpr uint16_t FOC_SAFETY_TASK_STACK_DEPTH = 768;
 static constexpr UBaseType_t FOC_SENSOR_TASK_PRIORITY =
-    tskIDLE_PRIORITY + 4U;
+    tskIDLE_PRIORITY + 4;
 static constexpr UBaseType_t FOC_SAFETY_TASK_PRIORITY =
-    tskIDLE_PRIORITY + 2U;
-static constexpr UBaseType_t FOC_OPEN_LOOP_TASK_PRIORITY =
-    tskIDLE_PRIORITY + 3U;
-static constexpr uint32_t FOC_SENSOR_UPDATE_PERIOD_MS = 1U;
-static constexpr uint32_t FOC_OPEN_LOOP_UPDATE_PERIOD_MS = 1U;
-static constexpr uint32_t FOC_SAFETY_UPDATE_PERIOD_MS = 10U;
-static constexpr bool FOC_OPEN_LOOP_CONTROL_FROM_TASK = false;
-static constexpr uint16_t FOC_CONTROL_ISR_DIVIDER = 2U;
-static constexpr uint32_t CURRENT_SENSOR_SETTLE_TIME_MS = 500U;
-static constexpr uint32_t CURRENT_CALIBRATION_SAMPLE_COUNT = 4096U;
+    tskIDLE_PRIORITY + 2;
+static constexpr uint32_t FOC_SENSOR_UPDATE_PERIOD_MS = 1;
+static constexpr uint32_t FOC_SAFETY_UPDATE_PERIOD_MS = 10;
+static constexpr uint16_t FOC_CONTROL_ISR_DIVIDER = 2;
+static constexpr uint32_t CURRENT_SENSOR_SETTLE_TIME_MS = 500;
+static constexpr uint32_t CURRENT_CALIBRATION_SAMPLE_COUNT = 4096;
 static constexpr float ADC_REFERENCE_VOLTAGE_V = 3.3f;
 static constexpr float ADC_FULL_SCALE_COUNT = 4095.0f;
 static constexpr float CURRENT_SHUNT_RESISTANCE_OHM = 0.01f;
@@ -40,7 +35,7 @@ static constexpr float CURRENT_AMPERE_PER_COUNT =
     ADC_REFERENCE_VOLTAGE_V /
     (ADC_FULL_SCALE_COUNT * CURRENT_SHUNT_RESISTANCE_OHM *
         CURRENT_AMPLIFIER_GAIN);
-static constexpr uint8_t MOTOR_POLE_PAIRS = 7U;
+static constexpr uint8_t MOTOR_POLE_PAIRS = 7;
 static constexpr float MOTOR_BUS_VOLTAGE_V = 12.0f;
 static constexpr float MOTOR_VOLTAGE_LIMIT_V = 3.0f;
 static constexpr float MOTOR_PHASE_CURRENT_LIMIT_A = 1.8f;
@@ -55,11 +50,11 @@ static constexpr float THIRD_PHASE_VECTOR_ANGLE_RAD =
     4.18879020478639098462f;
 static constexpr float ALIGNMENT_SWEEP_ANGLE_RAD =
     6.28318530717958647692f;
-static constexpr uint32_t PHASE_VECTOR_SETTLE_TIME_MS = 1000U;
-static constexpr uint32_t ALIGNMENT_SWEEP_TIME_MS = 3000U;
-static constexpr uint32_t CURRENT_POLARITY_VERIFY_TIME_MS = 500U;
-static constexpr uint32_t CURRENT_LOOP_VERIFY_TIME_MS = 500U;
-static constexpr uint32_t Q_AXIS_VERIFY_TIME_MS = 300U;
+static constexpr uint32_t PHASE_VECTOR_SETTLE_TIME_MS = 1000;
+static constexpr uint32_t ALIGNMENT_SWEEP_TIME_MS = 3000;
+static constexpr uint32_t CURRENT_POLARITY_VERIFY_TIME_MS = 500;
+static constexpr uint32_t CURRENT_LOOP_VERIFY_TIME_MS = 500;
+static constexpr uint32_t Q_AXIS_VERIFY_TIME_MS = 300;
 static constexpr float CURRENT_POLARITY_MINIMUM_A = 0.005f;
 static constexpr float PHASE_VECTOR_MINIMUM_CURRENT_A = 0.05f;
 static constexpr float PHASE_VECTOR_RATIO_MINIMUM = 0.25f;
@@ -77,13 +72,13 @@ static constexpr float OPEN_LOOP_ELECTRICAL_VELOCITY_RAD_S =
 static constexpr float OPEN_LOOP_MINIMUM_BUS_VOLTAGE_V = 9.0f;
 static constexpr float OPEN_LOOP_MAXIMUM_BUS_VOLTAGE_V = 15.0f;
 static constexpr float OPEN_LOOP_MINIMUM_MECHANICAL_MOVE_RAD = 0.25f;
-static constexpr uint32_t OPEN_LOOP_HOLD_TIME_MS = 500U;
-static constexpr uint32_t OPEN_LOOP_ACCELERATION_TIME_MS = 3000U;
-static constexpr uint32_t OPEN_LOOP_CONSTANT_SPEED_TIME_MS = 2000U;
+static constexpr uint32_t OPEN_LOOP_HOLD_TIME_MS = 500;
+static constexpr uint32_t OPEN_LOOP_ACCELERATION_TIME_MS = 3000;
+static constexpr uint32_t OPEN_LOOP_CONSTANT_SPEED_TIME_MS = 2000;
 static constexpr uint32_t OPEN_LOOP_RUN_TIME_MS =
-    OPEN_LOOP_ACCELERATION_TIME_MS * 2U +
+    OPEN_LOOP_ACCELERATION_TIME_MS * 2 +
     OPEN_LOOP_CONSTANT_SPEED_TIME_MS;
-static constexpr uint32_t OPEN_LOOP_PAUSE_TIME_MS = 500U;
+static constexpr uint32_t OPEN_LOOP_PAUSE_TIME_MS = 500;
 
 static as5600_rotor_sensor rotor(AS5600_I2C_BUS_ID,
     AS5600_I2C_ADDRESS);
@@ -102,9 +97,9 @@ static const tim1_phase_driver_config PHASE_DRIVER_CONFIG =
     &htim1,
     MOTOR_EN_GPIO_Port,
     MOTOR_EN_Pin,
-    3U,
-    2U,
-    1U,
+    3,
+    2,
+    1,
     true,
     true
 };
@@ -112,12 +107,12 @@ static tim1_phase_driver phase_output(PHASE_DRIVER_CONFIG);
 static topic::latest_topic<foc_commissioning_status>
     commissioning_topic;
 static foc_commissioning_status commissioning_status;
-static uint32_t commissioning_stage_start_ms = 0U;
+static uint32_t commissioning_stage_start_ms = 0;
 static float stage_current_sum_a = 0.0f;
 static float stage_current_sum_b = 0.0f;
 static float stage_d_axis_current_sum = 0.0f;
 static float stage_q_axis_current_sum = 0.0f;
-static uint32_t stage_sample_count = 0U;
+static uint32_t stage_sample_count = 0;
 static bool current_calibration_finished = false;
 static bool bus_voltage_sampling_started = false;
 static float open_loop_stage_start_mechanical_angle_rad = 0.0f;
@@ -165,7 +160,7 @@ static bool start_current_sampling()
 {
     sys_time::get_us_tick();
 
-    HAL_NVIC_SetPriority(ADC_IRQn, 5U, 0U);
+    HAL_NVIC_SetPriority(ADC_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(ADC_IRQn);
 
     if(HAL_ADCEx_InjectedStart_IT(&hadc1) != HAL_OK ||
@@ -189,8 +184,6 @@ static foc_config make_control_config()
 {
     foc_config config{};
     config.monitor_only = false;
-    config.open_loop_control_from_task =
-        FOC_OPEN_LOOP_CONTROL_FROM_TASK;
     config.pole_pairs = MOTOR_POLE_PAIRS;
     config.rotor_direction = 1;
     config.electrical_zero_offset_rad = 0.0f;
@@ -198,12 +191,12 @@ static foc_config make_control_config()
     config.bus_voltage_v = MOTOR_BUS_VOLTAGE_V;
     config.voltage_limit_v = MOTOR_VOLTAGE_LIMIT_V;
     config.max_phase_current_a = MOTOR_PHASE_CURRENT_LIMIT_A;
-    config.rotor_extrapolation_limit_us = 2000U;
-    config.rotor_hard_timeout_us = 5000U;
-    config.rotor_slow_timeout_us = 50000U;
-    config.command_timeout_ms = 100U;
-    config.communication_error_limit = 10U;
-    config.telemetry_divider = 20U;
+    config.rotor_extrapolation_limit_us = 2000;
+    config.rotor_hard_timeout_us = 5000;
+    config.rotor_slow_timeout_us = 50000;
+    config.command_timeout_ms = 100;
+    config.communication_error_limit = 10;
+    config.telemetry_divider = 20;
     config.control_isr_divider = FOC_CONTROL_ISR_DIVIDER;
     config.d_axis_pi.proportional_gain =
         CURRENT_PI_PROPORTIONAL_GAIN;
@@ -231,7 +224,7 @@ static void reset_stage_samples()
     stage_current_sum_b = 0.0f;
     stage_d_axis_current_sum = 0.0f;
     stage_q_axis_current_sum = 0.0f;
-    stage_sample_count = 0U;
+    stage_sample_count = 0;
 }
 
 /**
@@ -245,7 +238,7 @@ static void reset_stage_samples()
 static bool save_phase_vector_result(uint8_t vector_index,
     const foc_snapshot &snapshot)
 {
-    if(vector_index >= 3U || stage_sample_count == 0U)
+    if(vector_index >= 3 || stage_sample_count == 0)
     {
         return false;
     }
@@ -564,7 +557,7 @@ static foc_result update_open_loop_target(uint32_t timestamp_ms,
 
     uint32_t rotation_elapsed_ms = stage_elapsed_ms >
         OPEN_LOOP_HOLD_TIME_MS ?
-        stage_elapsed_ms - OPEN_LOOP_HOLD_TIME_MS : 0U;
+        stage_elapsed_ms - OPEN_LOOP_HOLD_TIME_MS : 0;
     float electrical_angle_rad =
         open_loop_stage_start_electrical_angle_rad +
         (float)direction *
@@ -699,7 +692,7 @@ static void accumulate_stage_sample(const foc_snapshot &snapshot)
 static void finish_first_alignment(const foc_snapshot &snapshot,
     uint32_t timestamp_ms)
 {
-    if(!save_phase_vector_result(0U, snapshot))
+    if(!save_phase_vector_result(0, snapshot))
     {
         fail_commissioning(foc_result::SAMPLE_NOT_READY);
         return;
@@ -724,7 +717,7 @@ static void finish_first_alignment(const foc_snapshot &snapshot,
 static void finish_second_phase_vector(const foc_snapshot &snapshot,
     uint32_t timestamp_ms)
 {
-    if(!save_phase_vector_result(1U, snapshot))
+    if(!save_phase_vector_result(1, snapshot))
     {
         fail_commissioning(foc_result::SAMPLE_NOT_READY);
         return;
@@ -749,7 +742,7 @@ static void finish_second_phase_vector(const foc_snapshot &snapshot,
 static void finish_third_phase_vector(const foc_snapshot &snapshot,
     uint32_t timestamp_ms)
 {
-    if(!save_phase_vector_result(2U, snapshot))
+    if(!save_phase_vector_result(2, snapshot))
     {
         fail_commissioning(foc_result::SAMPLE_NOT_READY);
         return;
@@ -795,7 +788,7 @@ static void finish_third_phase_vector(const foc_snapshot &snapshot,
  */
 static void finish_current_polarity_verification(uint32_t timestamp_ms)
 {
-    if(stage_sample_count == 0U)
+    if(stage_sample_count == 0)
     {
         fail_commissioning(foc_result::SAMPLE_NOT_READY);
         return;
@@ -887,7 +880,7 @@ static void finish_second_alignment(const foc_snapshot &snapshot,
  */
 static void finish_d_axis_verification(uint32_t timestamp_ms)
 {
-    if(stage_sample_count == 0U)
+    if(stage_sample_count == 0)
     {
         fail_commissioning(foc_result::SAMPLE_NOT_READY);
         return;
@@ -1057,7 +1050,7 @@ static void update_commissioning(const foc_snapshot &snapshot,
                 fail_commissioning(foc_result::TOPIC_ERROR);
                 break;
             }
-            if(stage_elapsed_ms >= PHASE_VECTOR_SETTLE_TIME_MS / 2U)
+            if(stage_elapsed_ms >= PHASE_VECTOR_SETTLE_TIME_MS / 2)
             {
                 accumulate_stage_sample(snapshot);
             }
@@ -1074,7 +1067,7 @@ static void update_commissioning(const foc_snapshot &snapshot,
                 fail_commissioning(foc_result::TOPIC_ERROR);
                 break;
             }
-            if(stage_elapsed_ms >= PHASE_VECTOR_SETTLE_TIME_MS / 2U)
+            if(stage_elapsed_ms >= PHASE_VECTOR_SETTLE_TIME_MS / 2)
             {
                 accumulate_stage_sample(snapshot);
             }
@@ -1091,7 +1084,7 @@ static void update_commissioning(const foc_snapshot &snapshot,
                 fail_commissioning(foc_result::TOPIC_ERROR);
                 break;
             }
-            if(stage_elapsed_ms >= PHASE_VECTOR_SETTLE_TIME_MS / 2U)
+            if(stage_elapsed_ms >= PHASE_VECTOR_SETTLE_TIME_MS / 2)
             {
                 accumulate_stage_sample(snapshot);
             }
@@ -1206,23 +1199,6 @@ static void foc_sensor_task_entry(void *argument)
 }
 
 /**
- * @brief 在 RTOS 任务中周期执行开环电压控制
- *
- * @param argument FreeRTOS 任务参数
- */
-static void foc_open_loop_task_entry(void *argument)
-{
-    TickType_t last_wake_time = xTaskGetTickCount();
-
-    while(true)
-    {
-        foc_core::run_open_loop_from_task(sys_time::get_us_tick());
-        vTaskDelayUntil(&last_wake_time,
-            pdMS_TO_TICKS(FOC_OPEN_LOOP_UPDATE_PERIOD_MS));
-    }
-}
-
-/**
  * @brief 周期执行 FOC 安全检查与受限硬件投运
  *
  * @param argument FreeRTOS 任务参数
@@ -1303,16 +1279,6 @@ void foc_dev::init()
         nullptr,
         FOC_SENSOR_TASK_PRIORITY,
         nullptr);
-    BaseType_t open_loop_task_result = pdPASS;
-    if(FOC_OPEN_LOOP_CONTROL_FROM_TASK)
-    {
-        open_loop_task_result = xTaskCreate(foc_open_loop_task_entry,
-            "foc_open_loop",
-            FOC_OPEN_LOOP_TASK_STACK_DEPTH,
-            nullptr,
-            FOC_OPEN_LOOP_TASK_PRIORITY,
-            nullptr);
-    }
     BaseType_t safety_task_result = xTaskCreate(foc_safety_task_entry,
         "foc_safety",
         FOC_SAFETY_TASK_STACK_DEPTH,
@@ -1320,8 +1286,7 @@ void foc_dev::init()
         FOC_SAFETY_TASK_PRIORITY,
         nullptr);
 
-    if(sensor_task_result != pdPASS || open_loop_task_result != pdPASS ||
-        safety_task_result != pdPASS)
+    if(sensor_task_result != pdPASS || safety_task_result != pdPASS)
     {
         Error_Handler();
     }

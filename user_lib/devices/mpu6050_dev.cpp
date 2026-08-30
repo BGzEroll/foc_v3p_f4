@@ -5,13 +5,13 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-static constexpr uint8_t MPU6050_I2C_BUS_ID = 1U;
-static constexpr uint8_t MPU6050_I2C_ADDRESS = 0x68U;
+static constexpr uint8_t MPU6050_I2C_BUS_ID = 1;
+static constexpr uint8_t MPU6050_I2C_ADDRESS = 0x68;
 static constexpr float MPU6050_ACCELEROMETER_WEIGHT = 0.02f;
-static constexpr uint16_t MPU6050_TASK_STACK_DEPTH = 512U;
-static constexpr UBaseType_t MPU6050_TASK_PRIORITY = tskIDLE_PRIORITY + 3U;
-static constexpr uint32_t MPU6050_UPDATE_PERIOD_MS = 5U;
-static constexpr uint32_t MPU6050_RETRY_DELAY_MS = 1000U;
+static constexpr uint16_t MPU6050_TASK_STACK_DEPTH = 512;
+static constexpr UBaseType_t MPU6050_TASK_PRIORITY = tskIDLE_PRIORITY + 3;
+static constexpr uint32_t MPU6050_UPDATE_PERIOD_MS = 5;
+static constexpr uint32_t MPU6050_RETRY_DELAY_MS = 1000;
 
 static mpu6050 imu(MPU6050_I2C_BUS_ID,
     MPU6050_I2C_ADDRESS,

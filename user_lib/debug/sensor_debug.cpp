@@ -9,11 +9,11 @@
 #include "task.h"
 #include <stdio.h>
 
-static constexpr uint8_t DEBUG_UART_BUS_ID = 0U;
-static constexpr uint16_t SENSOR_DEBUG_TASK_STACK_DEPTH = 512U;
-static constexpr UBaseType_t SENSOR_DEBUG_TASK_PRIORITY = tskIDLE_PRIORITY + 2U;
-static constexpr uint32_t SENSOR_DEBUG_OUTPUT_PERIOD_MS = 100U;
-static constexpr uint16_t UART_MESSAGE_BUFFER_SIZE = 640U;
+static constexpr uint8_t DEBUG_UART_BUS_ID = 0;
+static constexpr uint16_t SENSOR_DEBUG_TASK_STACK_DEPTH = 512;
+static constexpr UBaseType_t SENSOR_DEBUG_TASK_PRIORITY = tskIDLE_PRIORITY + 2;
+static constexpr uint32_t SENSOR_DEBUG_OUTPUT_PERIOD_MS = 100;
+static constexpr uint16_t UART_MESSAGE_BUFFER_SIZE = 640;
 static constexpr float RADIAN_TO_CENTIDEGREE =
     18000.0f / 3.14159265358979323846f;
 static constexpr float RADIAN_PER_SECOND_TO_MILLIRADIAN_PER_SECOND = 1000.0f;
@@ -91,7 +91,7 @@ static uart_result send_debug_message(const char *message,
         reinterpret_cast<const uint8_t *>(message),
         (uint16_t)message_length,
         uart_bus::DEFAULT_LOCK_TIMEOUT_MS,
-        100U);
+        100);
 }
 
 /**
@@ -119,14 +119,14 @@ static uart_result send_mpu6050_sample(const mpu6050_sample &sample)
         "MPU6050 roll=%c%lu.%02lu pitch=%c%lu.%02lu "
         "yaw=%c%lu.%02lu deg sequence=%lu timestamp_us=%lu\r\n",
         roll < 0 ? '-' : '+',
-        (unsigned long)(roll_magnitude / 100U),
-        (unsigned long)(roll_magnitude % 100U),
+        (unsigned long)(roll_magnitude / 100),
+        (unsigned long)(roll_magnitude % 100),
         pitch < 0 ? '-' : '+',
-        (unsigned long)(pitch_magnitude / 100U),
-        (unsigned long)(pitch_magnitude % 100U),
+        (unsigned long)(pitch_magnitude / 100),
+        (unsigned long)(pitch_magnitude % 100),
         yaw < 0 ? '-' : '+',
-        (unsigned long)(yaw_magnitude / 100U),
-        (unsigned long)(yaw_magnitude % 100U),
+        (unsigned long)(yaw_magnitude / 100),
+        (unsigned long)(yaw_magnitude % 100),
         (unsigned long)sample.sequence,
         (unsigned long)sample.timestamp_us);
 
@@ -178,39 +178,39 @@ static uart_result send_foc_snapshot(const foc_snapshot &snapshot)
         "offset_a=%c%lu.%02lu offset_b=%c%lu.%02lu "
         "control_seq=%lu bus_error=%lu consecutive=%lu\r\n",
         foc_state_text(snapshot.state),
-        snapshot.monitor_only ? 1U : 0U,
-        snapshot.output_active ? 1U : 0U,
+        snapshot.monitor_only ? 1 : 0,
+        snapshot.output_active ? 1 : 0,
         (unsigned long)snapshot.fault_flags,
         angle < 0 ? '-' : '+',
-        (unsigned long)(angle_magnitude / 100U),
-        (unsigned long)(angle_magnitude % 100U),
+        (unsigned long)(angle_magnitude / 100),
+        (unsigned long)(angle_magnitude % 100),
         velocity < 0 ? '-' : '+',
-        (unsigned long)(velocity_magnitude / 1000U),
-        (unsigned long)(velocity_magnitude % 1000U),
+        (unsigned long)(velocity_magnitude / 1000),
+        (unsigned long)(velocity_magnitude % 1000),
         (unsigned int)snapshot.rotor.raw_count,
         (unsigned long)snapshot.rotor.sequence,
         (unsigned long)snapshot.rotor.timestamp_us,
         age < 0 ? '-' : '+',
-        (unsigned long)(age_magnitude / 1000U),
-        (unsigned long)(age_magnitude % 1000U),
-        snapshot.current.valid ? 1U : 0U,
+        (unsigned long)(age_magnitude / 1000),
+        (unsigned long)(age_magnitude % 1000),
+        snapshot.current.valid ? 1 : 0,
         current_a < 0 ? '-' : '+',
-        (unsigned long)(current_a_magnitude / 1000U),
-        (unsigned long)(current_a_magnitude % 1000U),
+        (unsigned long)(current_a_magnitude / 1000),
+        (unsigned long)(current_a_magnitude % 1000),
         current_b < 0 ? '-' : '+',
-        (unsigned long)(current_b_magnitude / 1000U),
-        (unsigned long)(current_b_magnitude % 1000U),
+        (unsigned long)(current_b_magnitude / 1000),
+        (unsigned long)(current_b_magnitude % 1000),
         current_c < 0 ? '-' : '+',
-        (unsigned long)(current_c_magnitude / 1000U),
-        (unsigned long)(current_c_magnitude % 1000U),
+        (unsigned long)(current_c_magnitude / 1000),
+        (unsigned long)(current_c_magnitude % 1000),
         (unsigned int)snapshot.current.raw_count_a,
         (unsigned int)snapshot.current.raw_count_b,
         offset_a < 0 ? '-' : '+',
-        (unsigned long)(offset_a_magnitude / 100U),
-        (unsigned long)(offset_a_magnitude % 100U),
+        (unsigned long)(offset_a_magnitude / 100),
+        (unsigned long)(offset_a_magnitude % 100),
         offset_b < 0 ? '-' : '+',
-        (unsigned long)(offset_b_magnitude / 100U),
-        (unsigned long)(offset_b_magnitude % 100U),
+        (unsigned long)(offset_b_magnitude / 100),
+        (unsigned long)(offset_b_magnitude % 100),
         (unsigned long)snapshot.control_sequence,
         (unsigned long)snapshot.bus_update_error_count,
         (unsigned long)snapshot.consecutive_bus_error_count);
@@ -261,7 +261,7 @@ static uart_result send_foc_commissioning_status(
     int32_t vector_current_b[3]{};
     int32_t vector_current_c[3]{};
     int32_t vector_angle[3]{};
-    for(uint8_t index = 0U; index < 3U; index++)
+    for(uint8_t index = 0; index < 3; index++)
     {
         vector_current_a[index] = round_to_int32(
             status.phase_vector_current_a[index] * 1000.0f);
@@ -288,7 +288,7 @@ static uart_result send_foc_commissioning_status(
         "reverse_mrad=%ld motion=%u\r\n",
         (unsigned int)status.stage,
         (unsigned int)status.result,
-        status.phase_vector_check_passed ? 1U : 0U,
+        status.phase_vector_check_passed ? 1 : 0,
         (long)bus_voltage,
         (long)minimum_bus_voltage,
         (int)status.current_direction_a,
@@ -316,7 +316,7 @@ static uart_result send_foc_commissioning_status(
         (long)open_loop_electrical_velocity,
         (long)open_loop_forward_delta,
         (long)open_loop_reverse_delta,
-        status.open_loop_motion_detected ? 1U : 0U);
+        status.open_loop_motion_detected ? 1 : 0);
 
     if(message_length < 0 || (uint32_t)message_length >= sizeof(message))
     {
@@ -338,9 +338,9 @@ static void sensor_debug_task_entry(void *argument)
         Error_Handler();
     }
 
-    uint32_t previous_mpu6050_sequence = 0U;
-    uint32_t previous_foc_sequence = 0U;
-    uint32_t previous_commissioning_sequence = 0U;
+    uint32_t previous_mpu6050_sequence = 0;
+    uint32_t previous_foc_sequence = 0;
+    uint32_t previous_commissioning_sequence = 0;
     TickType_t last_wake_time = xTaskGetTickCount();
 
     while(true)

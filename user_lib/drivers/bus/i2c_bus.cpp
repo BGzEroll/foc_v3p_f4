@@ -76,9 +76,9 @@ static TickType_t milliseconds_to_ticks(uint32_t timeout_ms)
 {
     TickType_t ticks = pdMS_TO_TICKS(timeout_ms);
 
-    if(timeout_ms > 0U && ticks == 0U)
+    if(timeout_ms > 0 && ticks == 0)
     {
-        ticks = 1U;
+        ticks = 1;
     }
 
     return ticks;
@@ -95,17 +95,17 @@ static i2c_result map_hal_error(I2C_HandleTypeDef *handle)
 {
     uint32_t error = HAL_I2C_GetError(handle);
 
-    if((error & HAL_I2C_ERROR_AF) != 0U)
+    if((error & HAL_I2C_ERROR_AF) != 0)
     {
         return i2c_result::NACK;
     }
 
-    if((error & (HAL_I2C_ERROR_DMA | HAL_I2C_ERROR_DMA_PARAM)) != 0U)
+    if((error & (HAL_I2C_ERROR_DMA | HAL_I2C_ERROR_DMA_PARAM)) != 0)
     {
         return i2c_result::DMA_ERROR;
     }
 
-    if((error & HAL_I2C_ERROR_TIMEOUT) != 0U)
+    if((error & HAL_I2C_ERROR_TIMEOUT) != 0)
     {
         return i2c_result::TRANSFER_TIMEOUT;
     }
@@ -315,11 +315,11 @@ i2c_result i2c_dev::transfer_bytes(i2c_transfer_direction direction,
         return i2c_result::NOT_INITIALIZED;
     }
 
-    if(device_address > 0x7FU || !data || size == 0U)
+    if(device_address > 0x7F || !data || size == 0)
     {
         return i2c_result::INVALID_ARGUMENT;
     }
-    if(__get_IPSR() != 0U ||
+    if(__get_IPSR() != 0 ||
         xTaskGetSchedulerState() != taskSCHEDULER_RUNNING)
     {
         return i2c_result::INVALID_CONTEXT;
@@ -331,7 +331,7 @@ i2c_result i2c_dev::transfer_bytes(i2c_transfer_direction direction,
         return i2c_result::LOCK_TIMEOUT;
     }
 
-    while(xSemaphoreTake(completion_semaphore, 0U) == pdTRUE)
+    while(xSemaphoreTake(completion_semaphore, 0) == pdTRUE)
     {
     }
 
@@ -395,7 +395,7 @@ bool i2c_dev::recover_bus()
     bool recovered = HAL_I2C_DeInit(handle) == HAL_OK &&
         HAL_I2C_Init(handle) == HAL_OK;
 
-    while(xSemaphoreTake(completion_semaphore, 0U) == pdTRUE)
+    while(xSemaphoreTake(completion_semaphore, 0) == pdTRUE)
     {
     }
 
