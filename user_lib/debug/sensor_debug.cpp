@@ -2,7 +2,7 @@
 
 #include "drivers/bus/uart_bus.h"
 #include "drivers/foc/foc.h"
-#include "devices/foc_dev.h"
+#include "drivers/foc/foc_commissioning.h"
 #include "devices/mpu6050_dev.h"
 #include "main.h"
 #include "FreeRTOS.h"
@@ -362,7 +362,7 @@ static void sensor_debug_task_entry(void *argument)
         }
 
         foc_commissioning_status commissioning{};
-        if(foc_dev::peek_commissioning_status(commissioning) &&
+        if(foc::commissioning::peek_status(commissioning) &&
             commissioning.sequence != previous_commissioning_sequence)
         {
             send_foc_commissioning_status(commissioning);

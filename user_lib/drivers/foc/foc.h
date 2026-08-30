@@ -1,6 +1,7 @@
 #ifndef FOC_H
 #define FOC_H
 
+#include "foc_hardware.h"
 #include "foc_types.h"
 
 namespace foc
@@ -11,7 +12,8 @@ namespace foc
     void disable();
     foc_result clear_fault();
     bool peek_snapshot(foc_snapshot &snapshot);
-    foc_result init(const foc_config &config);
+    foc_result init(const foc_config &config,
+        const foc_hardware &hardware);
 }
 
 #endif

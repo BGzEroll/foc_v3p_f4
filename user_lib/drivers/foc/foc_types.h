@@ -35,6 +35,14 @@ enum class foc_state : uint8_t
 enum class foc_control_mode : uint8_t
 {
     DISABLED = 0,
+    VOLTAGE,
+    CURRENT
+};
+
+// 用于 snapshot 描述当前实际执行的内部命令模式。
+enum class foc_runtime_mode : uint8_t
+{
+    DISABLED = 0,
     OPEN_LOOP_VOLTAGE,
     VOLTAGE,
     CURRENT
@@ -135,6 +143,9 @@ struct foc_snapshot
     rotor_sample rotor{};
     phase_current_sample current{};
     foc_target target{};
+    foc_runtime_mode runtime_mode = foc_runtime_mode::DISABLED;
+    float command_electrical_angle_rad = 0.0f;
+    float command_electrical_velocity_rad_s = 0.0f;
     float rotor_sample_age_ms = 0.0f;
     float d_axis_current_a = 0.0f;
     float q_axis_current_a = 0.0f;
