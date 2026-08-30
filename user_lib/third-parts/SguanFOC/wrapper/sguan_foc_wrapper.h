@@ -2,27 +2,26 @@
 #define SGUAN_FOC_WRAPPER_H
 
 #include <stdint.h>
-
 #include "sguan_foc_bridge.h"
 
-enum class SguanFOCMode : uint8_t
+enum class sguan_foc_mode : uint8_t
 {
-    OpenVoltage = 0,
-    Current,
-    Velocity,
-    Position,
+    OPEN_VOLTAGE = 0,
+    CURRENT,
+    VELOCITY,
+    POSITION,
 };
 
-enum class SguanFOCInitError : uint8_t
+enum class sguan_foc_init_error : uint8_t
 {
-    None = 0,
-    BackendAlreadyInUse,
-    InvalidConfig,
+    NONE = 0,
+    BACKEND_ALREADY_IN_USE,
+    INVALID_CONFIG,
 };
 
-struct SguanFOCConfig
+struct sguan_foc_config
 {
-    struct Motor
+    struct motor
     {
         uint8_t pole_pairs = 0;
         float resistance_ohm = 0.0f;
@@ -35,7 +34,7 @@ struct SguanFOCConfig
         int8_t pwm_direction = 0;
     } motor;
 
-    struct CurrentSense
+    struct current_sense
     {
         float shunt_resistance_ohm = 0.0f;
         float amplifier_gain = 0.0f;
@@ -46,7 +45,7 @@ struct SguanFOCConfig
         uint8_t phase_mapping = 0;
     } current_sense;
 
-    struct CurrentPI
+    struct current_pi
     {
         float kp = 0.0f;
         float ki = 0.0f;
@@ -54,7 +53,7 @@ struct SguanFOCConfig
         float integral_limit_v = 0.0f;
     } current_pi;
 
-    struct Limits
+    struct limits
     {
         float max_id_a = 0.0f;
         float max_iq_a = 0.0f;
@@ -67,20 +66,20 @@ struct SguanFOCConfig
     float control_period_s = 0.0f;
 };
 
-struct SguanFOCCommand
+struct sguan_foc_command
 {
     float target_id_a = 0.0f;
     float target_iq_a = 0.10f;
     float target_velocity_rad_s = 0.0f;
     double target_position_rad = 0.0;
-    SguanFOCMode mode = SguanFOCMode::Current;
+    sguan_foc_mode mode = sguan_foc_mode::CURRENT;
 };
 
-struct SguanFOCSnapshot
+struct sguan_foc_snapshot
 {
     bool initialized = false;
     bool enabled = false;
-    SguanFOCMode mode = SguanFOCMode::Current;
+    sguan_foc_mode mode = sguan_foc_mode::CURRENT;
     uint8_t raw_status = 0;
 
     float mechanical_angle_rad = 0.0f;
@@ -108,17 +107,17 @@ struct SguanFOCSnapshot
 
 // 当前 wrapper 保留对象形式，但 SguanFOC 3.0.0 backend 只允许单实例占用。
 // backend 没有 deinit，guard 在首次成功 init 后保持占用到系统复位。
-class SguanFOCWrapper
+class sguan_foc_wrapper
 {
     public:
-        SguanFOCWrapper() = default;
-        SguanFOCWrapper(const SguanFOCWrapper &) = delete;
-        SguanFOCWrapper &operator=(const SguanFOCWrapper &) = delete;
-        SguanFOCWrapper(SguanFOCWrapper &&) = delete;
-        SguanFOCWrapper &operator=(SguanFOCWrapper &&) = delete;
+        sguan_foc_wrapper() = default;
+        sguan_foc_wrapper(const sguan_foc_wrapper &) = delete;
+        sguan_foc_wrapper &operator=(const sguan_foc_wrapper &) = delete;
+        sguan_foc_wrapper(sguan_foc_wrapper &&) = delete;
+        sguan_foc_wrapper &operator=(sguan_foc_wrapper &&) = delete;
 
     public:
-        bool init(const SguanFOCConfig &config);
+        bool init(const sguan_foc_config &config);
 
     public:
         // ISR-safe，ADC2 注入转换完成回调在20 kHz调用。
@@ -140,7 +139,7 @@ class SguanFOCWrapper
         void set_position(double position_rad);
 
         // Task context，切换工程侧控制模式。
-        void set_mode(SguanFOCMode mode);
+        void set_mode(sguan_foc_mode mode);
 
         // Task context，请求进入已使能状态。
         void enable();
@@ -155,12 +154,12 @@ class SguanFOCWrapper
         bool enabled() const;
 
         // Task context，读取一致的只读运行快照。
-        SguanFOCSnapshot snapshot() const;
+        sguan_foc_snapshot snapshot() const;
 
         // Task context，读取最近一次 init 失败原因。
-        SguanFOCInitError last_init_error() const;
+        sguan_foc_init_error last_init_error() const;
 
-        static SguanFOCConfig default_config();
+        static sguan_foc_config default_config();
 
     private:
         friend void sguan_foc_wrapper_apply_config(void);
@@ -170,16 +169,16 @@ class SguanFOCWrapper
         void apply_command_to_backend();
         void publish_snapshot();
 
-        static SguanFOCWrapper *active_instance_;
+        static sguan_foc_wrapper *active_instance_;
 
-        SguanFOCConfig config_{};
-        volatile SguanFOCCommand command_{};
-        volatile SguanFOCSnapshot snapshot_cache_{};
+        sguan_foc_config config_{};
+        volatile sguan_foc_command command_{};
+        volatile sguan_foc_snapshot snapshot_cache_{};
         volatile uint32_t snapshot_sequence_ = 0;
 
         bool initialized_ = false;
         volatile bool enabled_ = false;
-        SguanFOCInitError last_error_ = SguanFOCInitError::None;
+        sguan_foc_init_error last_error_ = sguan_foc_init_error::NONE;
 };
 
 #endif

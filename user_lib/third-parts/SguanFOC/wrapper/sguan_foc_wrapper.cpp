@@ -1,57 +1,12 @@
 #include "sguan_foc_wrapper.h"
 
 #include "main.h"
-
 extern "C"
 {
 #include "../SguanFOC.h"
 }
 
-SguanFOCWrapper *SguanFOCWrapper::active_instance_ = nullptr;
-
-/**
- * @brief 返回当前工程已验证的 SguanFOC 默认配置
- *
- * @return 与当前实机电流环参数一致的默认配置
- */
-SguanFOCConfig SguanFOCWrapper::default_config()
-{
-    SguanFOCConfig config{};
-
-    config.motor.pole_pairs = 7;
-    config.motor.resistance_ohm = 2.55f;
-    config.motor.ld_h = 0.00086f;
-    config.motor.lq_h = 0.00086f;
-    config.motor.ls_h = 0.00086f;
-    config.motor.flux_wb = 0.0035f;
-    config.motor.motor_direction = 1;
-    config.motor.encoder_direction = -1;
-    config.motor.pwm_direction = -1;
-
-    config.current_sense.shunt_resistance_ohm = 0.01f;
-    config.current_sense.amplifier_gain = 50.0f;
-    config.current_sense.adc_reference_v = 3.3f;
-    config.current_sense.adc_full_scale = 4096;
-    config.current_sense.dir0 = 1;
-    config.current_sense.dir1 = -1;
-    config.current_sense.phase_mapping = 1;
-
-    config.current_pi.kp = 0.2995f;
-    config.current_pi.ki = 300.0f;
-    config.current_pi.output_limit_v = 1.5f;
-    config.current_pi.integral_limit_v = 0.3f;
-
-    config.limits.max_id_a = 0.5f;
-    config.limits.max_iq_a = 0.5f;
-    config.limits.min_bus_voltage_v = 10.0f;
-    config.limits.max_bus_voltage_v = 14.0f;
-
-    config.nominal_bus_voltage_v = 12.0f;
-    config.pwm_period = 4200;
-    config.control_period_s = 0.00005f;
-
-    return config;
-}
+sguan_foc_wrapper *sguan_foc_wrapper::active_instance_ = nullptr;
 
 /**
  * @brief 绑定 SguanFOC backend 并设置初始化入口状态
@@ -60,7 +15,7 @@ SguanFOCConfig SguanFOCWrapper::default_config()
  *
  * @return 配置有效且 backend 未被其他实例占用时返回 true
  */
-bool SguanFOCWrapper::init(const SguanFOCConfig &config)
+bool sguan_foc_wrapper::init(const sguan_foc_config &config)
 {
     if(config.motor.pole_pairs == 0 ||
         !(config.motor.resistance_ohm > 0.0f) ||
@@ -97,19 +52,19 @@ bool SguanFOCWrapper::init(const SguanFOCConfig &config)
         config.pwm_period == 0 ||
         !(config.control_period_s > 0.0f))
     {
-        last_error_ = SguanFOCInitError::InvalidConfig;
+        last_error_ = sguan_foc_init_error::INVALID_CONFIG;
         return false;
     }
 
     if(active_instance_ != nullptr && active_instance_ != this)
     {
-        last_error_ = SguanFOCInitError::BackendAlreadyInUse;
+        last_error_ = sguan_foc_init_error::BACKEND_ALREADY_IN_USE;
         return false;
     }
 
     if(initialized_)
     {
-        last_error_ = SguanFOCInitError::None;
+        last_error_ = sguan_foc_init_error::NONE;
         return true;
     }
 
@@ -117,7 +72,7 @@ bool SguanFOCWrapper::init(const SguanFOCConfig &config)
     active_instance_ = this;
     initialized_ = true;
     enabled_ = true;
-    last_error_ = SguanFOCInitError::None;
+    last_error_ = sguan_foc_init_error::NONE;
 
     // 保持原有生命周期：由 service_loop() 在传感器就绪后执行完整初始化。
     Sguan.status = MOTOR_STATUS_UNINITIALIZED;
@@ -127,7 +82,7 @@ bool SguanFOCWrapper::init(const SguanFOCConfig &config)
 /**
  * @brief 从 ADC 注入转换完成中断推进一次 SguanFOC 高速环
  */
-void SguanFOCWrapper::high_freq_loop()
+void sguan_foc_wrapper::high_freq_loop()
 {
     SguanFOC_High_Loop();
     publish_snapshot();
@@ -136,7 +91,7 @@ void SguanFOCWrapper::high_freq_loop()
 /**
  * @brief 执行 SguanFOC 原有主循环入口
  */
-void SguanFOCWrapper::service_loop()
+void sguan_foc_wrapper::service_loop()
 {
     if(!initialized_)
     {
@@ -149,7 +104,7 @@ void SguanFOCWrapper::service_loop()
 /**
  * @brief 执行 SguanFOC 原有低频保护和状态机入口
  */
-void SguanFOCWrapper::low_freq_loop()
+void sguan_foc_wrapper::low_freq_loop()
 {
     if(!initialized_)
     {
@@ -165,7 +120,7 @@ void SguanFOCWrapper::low_freq_loop()
  * @param id_a D轴目标电流，单位安培
  * @param iq_a Q轴目标电流，单位安培
  */
-void SguanFOCWrapper::set_current(float id_a, float iq_a)
+void sguan_foc_wrapper::set_current(float id_a, float iq_a)
 {
     uint32_t interrupt_state = __get_PRIMASK();
     __disable_irq();
@@ -180,7 +135,7 @@ void SguanFOCWrapper::set_current(float id_a, float iq_a)
  *
  * @param velocity_rad_s 目标机械角速度，单位弧度每秒
  */
-void SguanFOCWrapper::set_velocity(float velocity_rad_s)
+void sguan_foc_wrapper::set_velocity(float velocity_rad_s)
 {
     uint32_t interrupt_state = __get_PRIMASK();
     __disable_irq();
@@ -194,7 +149,7 @@ void SguanFOCWrapper::set_velocity(float velocity_rad_s)
  *
  * @param position_rad 目标机械位置，单位弧度
  */
-void SguanFOCWrapper::set_position(double position_rad)
+void sguan_foc_wrapper::set_position(double position_rad)
 {
     uint32_t interrupt_state = __get_PRIMASK();
     __disable_irq();
@@ -208,7 +163,7 @@ void SguanFOCWrapper::set_position(double position_rad)
  *
  * @param mode 工程侧控制模式
  */
-void SguanFOCWrapper::set_mode(SguanFOCMode mode)
+void sguan_foc_wrapper::set_mode(sguan_foc_mode mode)
 {
     uint32_t interrupt_state = __get_PRIMASK();
     __disable_irq();
@@ -220,7 +175,7 @@ void SguanFOCWrapper::set_mode(SguanFOCMode mode)
 /**
  * @brief 请求第三方状态机离开失能状态
  */
-void SguanFOCWrapper::enable()
+void sguan_foc_wrapper::enable()
 {
     if(!initialized_)
     {
@@ -241,7 +196,7 @@ void SguanFOCWrapper::enable()
 /**
  * @brief 请求第三方状态机进入失能状态
  */
-void SguanFOCWrapper::disable()
+void sguan_foc_wrapper::disable()
 {
     if(!initialized_)
     {
@@ -261,7 +216,7 @@ void SguanFOCWrapper::disable()
  *
  * @return 已完成 wrapper 初始化时返回 true
  */
-bool SguanFOCWrapper::initialized() const
+bool sguan_foc_wrapper::initialized() const
 {
     return initialized_;
 }
@@ -271,7 +226,7 @@ bool SguanFOCWrapper::initialized() const
  *
  * @return 已请求使能且第三方状态位于运行区间时返回 true
  */
-bool SguanFOCWrapper::enabled() const
+bool sguan_foc_wrapper::enabled() const
 {
     if(!initialized_ || !enabled_)
     {
@@ -287,9 +242,9 @@ bool SguanFOCWrapper::enabled() const
  *
  * @return 通过 sequence 校验的一致快照
  */
-SguanFOCSnapshot SguanFOCWrapper::snapshot() const
+sguan_foc_snapshot sguan_foc_wrapper::snapshot() const
 {
-    SguanFOCSnapshot result{};
+    sguan_foc_snapshot result{};
 
     while(true)
     {
@@ -341,15 +296,59 @@ SguanFOCSnapshot SguanFOCWrapper::snapshot() const
  *
  * @return 初始化错误枚举
  */
-SguanFOCInitError SguanFOCWrapper::last_init_error() const
+sguan_foc_init_error sguan_foc_wrapper::last_init_error() const
 {
     return last_error_;
 }
 
 /**
+ * @brief 返回当前工程已验证的 SguanFOC 默认配置
+ *
+ * @return 与当前实机电流环参数一致的默认配置
+ */
+sguan_foc_config sguan_foc_wrapper::default_config()
+{
+    sguan_foc_config config{};
+
+    config.motor.pole_pairs = 7;
+    config.motor.resistance_ohm = 2.55f;
+    config.motor.ld_h = 0.00086f;
+    config.motor.lq_h = 0.00086f;
+    config.motor.ls_h = 0.00086f;
+    config.motor.flux_wb = 0.0035f;
+    config.motor.motor_direction = 1;
+    config.motor.encoder_direction = -1;
+    config.motor.pwm_direction = -1;
+
+    config.current_sense.shunt_resistance_ohm = 0.01f;
+    config.current_sense.amplifier_gain = 50.0f;
+    config.current_sense.adc_reference_v = 3.3f;
+    config.current_sense.adc_full_scale = 4096;
+    config.current_sense.dir0 = 1;
+    config.current_sense.dir1 = -1;
+    config.current_sense.phase_mapping = 1;
+
+    config.current_pi.kp = 0.2995f;
+    config.current_pi.ki = 300.0f;
+    config.current_pi.output_limit_v = 1.5f;
+    config.current_pi.integral_limit_v = 0.3f;
+
+    config.limits.max_id_a = 0.5f;
+    config.limits.max_iq_a = 0.5f;
+    config.limits.min_bus_voltage_v = 10.0f;
+    config.limits.max_bus_voltage_v = 14.0f;
+
+    config.nominal_bus_voltage_v = 12.0f;
+    config.pwm_period = 4200;
+    config.control_period_s = 0.00005f;
+
+    return config;
+}
+
+/**
  * @brief 将 wrapper 配置映射到 SguanFOC 的全局 backend
  */
-void SguanFOCWrapper::apply_config_to_backend()
+void sguan_foc_wrapper::apply_config_to_backend()
 {
     Sguan.identify.Ld = config_.motor.ld_h;
     Sguan.identify.Lq = config_.motor.lq_h;
@@ -406,21 +405,21 @@ void SguanFOCWrapper::apply_config_to_backend()
 /**
  * @brief 将工程命令映射到 SguanFOC 的实时目标字段
  */
-void SguanFOCWrapper::apply_command_to_backend()
+void sguan_foc_wrapper::apply_command_to_backend()
 {
     uint8_t backend_mode = Current_SINGLE_MODE;
     switch(command_.mode)
     {
-        case SguanFOCMode::OpenVoltage:
+        case sguan_foc_mode::OPEN_VOLTAGE:
             backend_mode = Velocity_OPEN_MODE;
             break;
-        case SguanFOCMode::Current:
+        case sguan_foc_mode::CURRENT:
             backend_mode = Current_SINGLE_MODE;
             break;
-        case SguanFOCMode::Velocity:
+        case sguan_foc_mode::VELOCITY:
             backend_mode = VelCur_DOUBLE_MODE;
             break;
-        case SguanFOCMode::Position:
+        case sguan_foc_mode::POSITION:
             backend_mode = PosVelCur_THREE_MODE;
             break;
         default:
@@ -438,7 +437,7 @@ void SguanFOCWrapper::apply_command_to_backend()
 /**
  * @brief 从 backend 复制少量字段并发布一次一致快照
  */
-void SguanFOCWrapper::publish_snapshot()
+void sguan_foc_wrapper::publish_snapshot()
 {
     snapshot_sequence_++;
     __DMB();
@@ -452,19 +451,19 @@ void SguanFOCWrapper::publish_snapshot()
     switch(Sguan.mode)
     {
         case Velocity_OPEN_MODE:
-            snapshot_cache_.mode = SguanFOCMode::OpenVoltage;
+            snapshot_cache_.mode = sguan_foc_mode::OPEN_VOLTAGE;
             break;
         case Current_SINGLE_MODE:
-            snapshot_cache_.mode = SguanFOCMode::Current;
+            snapshot_cache_.mode = sguan_foc_mode::CURRENT;
             break;
         case VelCur_DOUBLE_MODE:
-            snapshot_cache_.mode = SguanFOCMode::Velocity;
+            snapshot_cache_.mode = sguan_foc_mode::VELOCITY;
             break;
         case PosVelCur_THREE_MODE:
-            snapshot_cache_.mode = SguanFOCMode::Position;
+            snapshot_cache_.mode = sguan_foc_mode::POSITION;
             break;
         default:
-            snapshot_cache_.mode = SguanFOCMode::Current;
+            snapshot_cache_.mode = sguan_foc_mode::CURRENT;
             break;
     }
 
@@ -496,9 +495,9 @@ void SguanFOCWrapper::publish_snapshot()
  */
 extern "C" void sguan_foc_wrapper_apply_config(void)
 {
-    if(SguanFOCWrapper::active_instance_ != nullptr)
+    if(sguan_foc_wrapper::active_instance_ != nullptr)
     {
-        SguanFOCWrapper::active_instance_->apply_config_to_backend();
+        sguan_foc_wrapper::active_instance_->apply_config_to_backend();
     }
 }
 
@@ -507,8 +506,8 @@ extern "C" void sguan_foc_wrapper_apply_config(void)
  */
 extern "C" void sguan_foc_wrapper_apply_command(void)
 {
-    if(SguanFOCWrapper::active_instance_ != nullptr)
+    if(sguan_foc_wrapper::active_instance_ != nullptr)
     {
-        SguanFOCWrapper::active_instance_->apply_command_to_backend();
+        sguan_foc_wrapper::active_instance_->apply_command_to_backend();
     }
 }

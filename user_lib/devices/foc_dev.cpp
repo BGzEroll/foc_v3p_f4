@@ -24,7 +24,7 @@ static constexpr float BUS_VOLTAGE_DIVIDER_RATIO = 11.0f;
 static as5600_rotor_sensor rotor(AS5600_I2C_BUS_ID,
     AS5600_I2C_ADDRESS);
 static volatile bool rotor_ready = false;
-static SguanFOCWrapper motor;
+static sguan_foc_wrapper motor;
 
 extern "C"
 {
@@ -166,7 +166,7 @@ static void sguan_task_entry(void *argument)
  *
  * @return 板级唯一的 SguanFOC wrapper 实例
  */
-SguanFOCWrapper &foc_dev::controller()
+sguan_foc_wrapper &foc_dev::controller()
 {
     return motor;
 }
@@ -182,7 +182,7 @@ void foc_dev::init()
         Error_Handler();
     }
 
-    SguanFOCConfig config = SguanFOCWrapper::default_config();
+    sguan_foc_config config = sguan_foc_wrapper::default_config();
     if(!motor.init(config))
     {
         Error_Handler();
