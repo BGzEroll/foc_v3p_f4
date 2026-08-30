@@ -183,7 +183,7 @@ int main()
         foc_result::OK, "link driver");
     failure_count += expect(foc_core::init(config) == foc_result::OK,
         "initialize control mode");
-    failure_count += expect(foc_core::update_bus_sensors() ==
+    failure_count += expect(foc_core::update_sensors() ==
         foc_result::OK, "initialize rotor in task");
     failure_count += expect(foc_core::set_rotor_alignment(-1, 0.3f) ==
         foc_result::OK, "set rotor alignment while disabled");

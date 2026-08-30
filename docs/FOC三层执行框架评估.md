@@ -14,7 +14,7 @@
 namespace foc_core
 {
     foc_result run_control_from_isr(uint32_t timestamp_us);
-    foc_result update_bus_sensors();
+    foc_result update_sensors();
     foc_result update_safety(uint32_t timestamp_ms);
 }
 ```
@@ -31,7 +31,7 @@ namespace foc_core
 
 ```mermaid
 flowchart LR
-    HIGH_TASK[高频传感器任务] --> UPDATE[foc_core::update_bus_sensors]
+    HIGH_TASK[高频传感器任务] --> UPDATE[foc_core::update_sensors]
     UPDATE --> BUS[I2C/SPI 传感器 update_task]
     BUS --> TOPIC[latest_topic 最新样本]
 
@@ -64,7 +64,7 @@ ADC ISR
 
 外部高频任务
     → vTaskDelayUntil()
-    → update_bus_sensors()
+    → update_sensors()
 
 外部低频任务
     → vTaskDelayUntil()
@@ -266,7 +266,7 @@ Bus 传感器的同一个样本会被多个 20 kHz 控制周期重复读取，�
 推荐接口：
 
 ```cpp
-foc_result foc_core::update_bus_sensors();
+foc_result foc_core::update_sensors();
 ```
 
 首版完全单实例只有一个转子 Bus 传感器时，该 API 可以简单调用：
@@ -296,7 +296,7 @@ linked_rotor_sensor->update_task()
 - Bus 母线电压计。
 - Bus 温度传感器。
 
-一个 `update_bus_sensors()` 顺序等待所有设备，会使总时间和抖动累加。届时可以改成：
+一个 `update_sensors()` 顺序等待所有设备，会使总时间和抖动累加。届时可以改成：
 
 - 每个传感器独立任务；或
 - 非阻塞状态机；或
@@ -518,7 +518,7 @@ namespace foc_core
     foc_result enable();
     void disable();
     foc_result run_control_from_isr(uint32_t timestamp_us);
-    foc_result update_bus_sensors();
+    foc_result update_sensors();
     foc_result update_safety(uint32_t timestamp_ms);
     foc_result init(const foc_config &config);
 }
@@ -526,7 +526,7 @@ namespace foc_core
 #endif
 ```
 
-命名中明确保留 `_from_isr`，避免以后在任务中误调用控制入口。`update_bus_sensors()` 和 `update_safety()` 的注释则必须声明只能在任务上下文调用。
+命名中明确保留 `_from_isr`，避免以后在任务中误调用控制入口。`update_sensors()` 和 `update_safety()` 的注释则必须声明只能在任务上下文调用。
 
 `foc_core` 不需要导出任务入口函数；它只提供一步更新 API。
 
@@ -537,7 +537,7 @@ namespace foc_core
 | 入口 | 初始目标 | 备注 |
 |---|---:|---|
 | `run_control_from_isr()` | 与 ADC/PWM 同步，目标 20 kHz | 必须验证真实触发频率和 WCET |
-| `update_bus_sensors()` | AS5600 先从稳定的约 1 kHz 开始 | 使用实际完成时间戳，不假设绝对周期 |
+| `update_sensors()` | AS5600 先从稳定的约 1 kHz 开始 | 使用实际完成时间戳，不假设绝对周期 |
 | `update_safety()` | 100～1000 Hz | 快保护不得依赖它 |
 | debug 输出 | 10～100 Hz | 从快照读取，不进入控制链 |
 
@@ -566,7 +566,7 @@ foc_core::run_control_from_isr()
     强实时控制路径
     ADC 电流 + Bus 传感器最新快照 + FOC + duty + 快保护
 
-foc_core::update_bus_sensors()
+foc_core::update_sensors()
     RTOS 传感器生产路径
     允许 Bus DMA/信号量，成功后发布最新快照
 

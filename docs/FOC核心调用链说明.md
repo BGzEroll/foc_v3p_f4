@@ -149,7 +149,7 @@ MOTOR_EN 置为禁用
 
 ```text
 foc_sensor_task_entry()
-└── foc_core::update_bus_sensors()
+└── foc_core::update_sensors()
     ├── 首次成功前：rotor_sensor::init()
     └── 初始化成功后：rotor_sensor::update_task()
         └── as5600_rotor_sensor::read_and_publish_sample()

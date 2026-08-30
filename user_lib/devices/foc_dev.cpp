@@ -1179,7 +1179,7 @@ static void foc_sensor_task_entry(void *argument)
     while(true)
     {
         TickType_t update_start_tick = xTaskGetTickCount();
-        foc_result result = foc_core::update_bus_sensors();
+        foc_result result = foc_core::update_sensors();
         TickType_t update_elapsed_ticks =
             xTaskGetTickCount() - update_start_tick;
 

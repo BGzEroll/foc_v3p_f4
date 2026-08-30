@@ -681,11 +681,11 @@ foc_result foc_core::run_control_from_isr(uint32_t timestamp_us)
 }
 
 /**
- * @brief 在高频 FreeRTOS 任务中推进一次 Bus 传感器采集
+ * @brief 在高频 FreeRTOS 任务中推进一次传感器采集
  *
  * @return 本次初始化或采样结果
  */
-foc_result foc_core::update_bus_sensors()
+foc_result foc_core::update_sensors()
 {
     if(!core_context.initialized){return foc_result::NOT_INITIALIZED;}
 

@@ -139,7 +139,7 @@ int main()
     failure_count += expect(driver.enable_count == 0U,
         "monitor mode never calls hardware enable");
 
-    failure_count += expect(foc_core::update_bus_sensors() ==
+    failure_count += expect(foc_core::update_sensors() ==
         foc_result::OK, "deferred rotor initialization");
     failure_count += expect(foc_core::update_safety(1U) == foc_result::OK,
         "monitor safety update");
@@ -162,7 +162,7 @@ int main()
     rotor.fail_update = true;
     for(uint32_t index = 0U; index < 10U; index++)
     {
-        foc_core::update_bus_sensors();
+        foc_core::update_sensors();
     }
     failure_count += expect(foc_core::update_safety(12U) ==
         foc_result::SENSOR_ERROR, "communication error latches fault");
@@ -173,7 +173,7 @@ int main()
         "fault appears in snapshot");
 
     rotor.fail_update = false;
-    foc_core::update_bus_sensors();
+    foc_core::update_sensors();
     foc_core::update_safety(13U);
     foc_core::peek_snapshot(snapshot);
     failure_count += expect(snapshot.state == foc_state::FAULT,

@@ -19,7 +19,7 @@ namespace foc_core
     void disable();
     foc_result clear_fault();
     foc_result run_control_from_isr(uint32_t timestamp_us);
-    foc_result update_bus_sensors();
+    foc_result update_sensors();
     foc_result update_safety(uint32_t timestamp_ms);
     bool peek_snapshot(foc_snapshot &snapshot);
     foc_result init(const foc_config &config);
