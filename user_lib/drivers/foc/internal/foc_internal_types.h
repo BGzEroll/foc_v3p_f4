@@ -15,4 +15,26 @@ struct foc_command
     float electrical_velocity_rad_s = 0.0f;
 };
 
+// 控制 ISR 发布给安全任务的实例级遥测数据。
+struct foc_control_telemetry
+{
+    uint32_t sequence = 0;
+    uint32_t timestamp_us = 0;
+    rotor_sample rotor{};
+    phase_current_sample current{};
+    float rotor_sample_age_ms = 0.0f;
+    float d_axis_current_a = 0.0f;
+    float q_axis_current_a = 0.0f;
+    float d_axis_voltage_v = 0.0f;
+    float q_axis_voltage_v = 0.0f;
+    phase_duty duty{};
+};
+
+// 低频安全任务发送给控制 ISR 的实例级故障请求。
+struct foc_fault_request
+{
+    uint32_t sequence = 0;
+    uint32_t fault_flags = 0;
+};
+
 #endif

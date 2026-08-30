@@ -3,6 +3,7 @@
 #include "drivers/bus/uart_bus.h"
 #include "drivers/foc/foc.h"
 #include "drivers/foc/foc_commissioning.h"
+#include "devices/foc_dev.h"
 #include "devices/mpu6050_dev.h"
 #include "main.h"
 #include "FreeRTOS.h"
@@ -341,6 +342,9 @@ static void sensor_debug_task_entry(void *argument)
     uint32_t previous_mpu6050_sequence = 0;
     uint32_t previous_foc_sequence = 0;
     uint32_t previous_commissioning_sequence = 0;
+    foc::instance &motor = foc_dev::get_motor();
+    foc::commissioner &motorCommissioner =
+        foc_dev::get_motor_commissioner();
     TickType_t last_wake_time = xTaskGetTickCount();
 
     while(true)
@@ -354,7 +358,7 @@ static void sensor_debug_task_entry(void *argument)
         }
 
         foc_snapshot foc_data{};
-        if(foc::peek_snapshot(foc_data) &&
+        if(motor.peek_snapshot(foc_data) &&
             foc_data.sequence != previous_foc_sequence)
         {
             send_foc_snapshot(foc_data);
@@ -362,7 +366,7 @@ static void sensor_debug_task_entry(void *argument)
         }
 
         foc_commissioning_status commissioning{};
-        if(foc::commissioning::peek_status(commissioning) &&
+        if(motorCommissioner.peek_status(commissioning) &&
             commissioning.sequence != previous_commissioning_sequence)
         {
             send_foc_commissioning_status(commissioning);

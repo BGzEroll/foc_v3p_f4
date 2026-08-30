@@ -2,6 +2,7 @@
 #define FOC_COMMISSIONING_H
 
 #include "foc_types.h"
+#include "system/topic.h"
 
 enum class foc_commissioning_stage : uint8_t
 {
@@ -65,13 +66,99 @@ struct foc_commissioning_status
 
 namespace foc
 {
-    namespace commissioning
+    class instance;
+
+    class commissioner
     {
-        foc_result init(const foc_commissioning_config &config,
-            uint32_t timestamp_ms);
-        void update(uint32_t timestamp_ms, float bus_voltage_v);
-        bool peek_status(foc_commissioning_status &status);
-    }
+        public:
+            commissioner() = default;
+            commissioner(const commissioner &) = delete;
+            commissioner &operator=(const commissioner &) = delete;
+            commissioner(commissioner &&) = delete;
+            commissioner &operator=(commissioner &&) = delete;
+
+        public:
+            foc_result init(instance &motor,
+                const foc_commissioning_config &config,
+                uint32_t timestampMs);
+            void update(uint32_t timestampMs, float busVoltageV);
+            bool peek_status(foc_commissioning_status &status);
+
+        private:
+            void publish_commissioning_status();
+            void reset_stage_samples();
+            bool save_phase_vector_result(uint8_t vectorIndex,
+                const foc_snapshot &snapshot);
+            bool phase_vector_results_valid();
+            void update_bus_voltage_status(float busVoltageV);
+            void enter_commissioning_stage(
+                foc_commissioning_stage stage,
+                uint32_t timestampMs);
+            void fail_commissioning(foc_result result);
+            foc_result set_alignment_target(uint32_t timestampMs,
+                float electricalAngleRad);
+            foc_result set_open_loop_target(uint32_t timestampMs,
+                float electricalAngleRad,
+                float qAxisVoltageV,
+                float electricalVelocityRadS);
+            bool open_loop_bus_voltage_valid();
+            foc_result start_open_loop_stage(
+                foc_commissioning_stage stage,
+                const foc_snapshot &snapshot,
+                uint32_t timestampMs,
+                float electricalAngleRad);
+            float calculate_open_loop_rotation_rad(
+                uint32_t rotationElapsedMs);
+            float calculate_open_loop_velocity_rad_s(
+                uint32_t rotationElapsedMs);
+            foc_result update_open_loop_target(uint32_t timestampMs,
+                uint32_t stageElapsedMs,
+                int8_t direction);
+            foc_result start_alignment_stage(
+                foc_commissioning_stage stage,
+                uint32_t timestampMs,
+                float electricalAngleRad);
+            void finish_open_loop_forward(const foc_snapshot &snapshot,
+                uint32_t timestampMs);
+            void finish_open_loop_reverse(const foc_snapshot &snapshot,
+                uint32_t timestampMs);
+            foc_result set_current_target(uint32_t timestampMs,
+                float dAxisCurrentA,
+                float qAxisCurrentA);
+            void accumulate_stage_sample(const foc_snapshot &snapshot);
+            void finish_first_alignment(const foc_snapshot &snapshot,
+                uint32_t timestampMs);
+            void finish_second_phase_vector(const foc_snapshot &snapshot,
+                uint32_t timestampMs);
+            void finish_third_phase_vector(const foc_snapshot &snapshot,
+                uint32_t timestampMs);
+            void finish_current_polarity_verification(uint32_t timestampMs);
+            void finish_second_alignment(const foc_snapshot &snapshot,
+                uint32_t timestampMs);
+            void finish_d_axis_verification(uint32_t timestampMs);
+            void finish_q_axis_verification();
+            void update_commissioning(const foc_snapshot &snapshot,
+                bool snapshotAvailable,
+                uint32_t timestampMs);
+
+            instance *motor = nullptr;
+            foc_commissioning_config config{};
+            foc_commissioning_status status{};
+            topic::latest_topic<foc_commissioning_status> statusTopic;
+            bool initialized = false;
+            uint8_t polePairs = 0;
+            uint32_t commissioningStartMs = 0;
+            uint32_t stageStartMs = 0;
+            float stageCurrentSumA = 0.0f;
+            float stageCurrentSumB = 0.0f;
+            float stageDAxisCurrentSum = 0.0f;
+            float stageQAxisCurrentSum = 0.0f;
+            uint32_t stageSampleCount = 0;
+            bool currentCalibrationFinished = false;
+            bool calibrationTaskStarted = false;
+            float openLoopStageStartMechanicalAngleRad = 0.0f;
+            float openLoopStageStartElectricalAngleRad = 0.0f;
+    };
 }
 
 #endif

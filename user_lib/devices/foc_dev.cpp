@@ -66,7 +66,8 @@ static const tim1_phase_driver_config PHASE_DRIVER_CONFIG =
 };
 static tim1_phase_driver phase_output(PHASE_DRIVER_CONFIG);
 static bool bus_voltage_sampling_started = false;
-static foc_commissioning_config commissioning_config{};
+static foc::instance motor;
+static foc::commissioner motorCommissioner;
 
 /**
  * @brief 启动母线电压 ADC 连续采样
@@ -168,7 +169,7 @@ static void foc_sensor_task_entry(void *argument)
     while(true)
     {
         TickType_t update_start_tick = xTaskGetTickCount();
-        foc_result result = foc::runtime::update_sensors();
+        foc_result result = foc::runtime::update_sensors(motor);
         TickType_t update_elapsed_ticks =
             xTaskGetTickCount() - update_start_tick;
 
@@ -198,10 +199,10 @@ static void foc_safety_task_entry(void *argument)
 
     while(true)
     {
-        uint32_t timestamp_ms = sys_time::get_ms_tick();
-        foc::commissioning::update(timestamp_ms,
+        uint32_t timestampMs = sys_time::get_ms_tick();
+        motorCommissioner.update(timestampMs,
             read_bus_voltage_v());
-        foc::runtime::update_safety(timestamp_ms);
+        foc::runtime::update_safety(motor, timestampMs);
 
         vTaskDelayUntil(&last_wake_time,
             pdMS_TO_TICKS(FOC_SAFETY_UPDATE_PERIOD_MS));
@@ -218,13 +219,14 @@ void foc_dev::init()
         &phase_current,
         &phase_output
     };
-    if(foc::init(make_control_config(), hardware) != foc_result::OK)
+    if(motor.init(make_control_config(), hardware) != foc_result::OK)
     {
         Error_Handler();
     }
 
-    commissioning_config = {};
-    if(foc::commissioning::init(commissioning_config,
+    foc_commissioning_config commissioningConfig{};
+    if(motorCommissioner.init(motor,
+        commissioningConfig,
         sys_time::get_ms_tick()) != foc_result::OK)
     {
         Error_Handler();
@@ -272,6 +274,17 @@ extern "C" void HAL_ADCEx_InjectedConvCpltCallback(
 {
     if(adc && adc->Instance == ADC1)
     {
-        foc::runtime::run_control_from_isr(sys_time::get_us_tick());
+        foc::runtime::run_control_from_isr(motor,
+            sys_time::get_us_tick());
     }
+}
+
+foc::instance &foc_dev::get_motor()
+{
+    return motor;
+}
+
+foc::commissioner &foc_dev::get_motor_commissioner()
+{
+    return motorCommissioner;
 }
