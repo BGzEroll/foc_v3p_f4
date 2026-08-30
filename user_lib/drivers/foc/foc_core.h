@@ -14,9 +14,7 @@ namespace foc_core
     foc_result set_target(const foc_target &target);
     foc_result set_rotor_alignment(int8_t rotor_direction,
         float electrical_zero_offset_rad);
-    foc_result begin_current_calibration(uint32_t sample_count);
-    foc_result finish_current_calibration();
-    bool current_calibration_complete();
+    foc_result calibrate_current_task(uint32_t sample_count);
     foc_result enable();
     void disable();
     foc_result clear_fault();

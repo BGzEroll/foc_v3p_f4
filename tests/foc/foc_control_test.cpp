@@ -52,19 +52,11 @@ class fake_current_sensor : public current_sensor
             return foc_result::OK;
         }
 
-        foc_result begin_calibration_task(uint32_t) override
+        foc_result calibrate_task(uint32_t) override
         {
-            return foc_result::OK;
-        }
-
-        foc_result finish_calibration_task() override
-        {
-            return foc_result::OK;
-        }
-
-        bool calibration_complete_task() const override
-        {
-            return true;
+            calibration_call_count++;
+            return calibration_call_count == 1U ?
+                foc_result::CALIBRATING : foc_result::OK;
         }
 
         foc_result read_conversion_from_isr(uint32_t timestamp_us,
@@ -80,6 +72,7 @@ class fake_current_sensor : public current_sensor
     public:
         phase_current_sample sample{};
         bool initialized = false;
+        uint32_t calibration_call_count = 0U;
 };
 
 class fake_phase_driver : public phase_driver
@@ -194,10 +187,10 @@ int main()
         foc_result::OK, "initialize rotor in task");
     failure_count += expect(foc_core::set_rotor_alignment(-1, 0.3f) ==
         foc_result::OK, "set rotor alignment while disabled");
-    failure_count += expect(foc_core::begin_current_calibration(16U) ==
-        foc_result::OK && driver.enabled,
+    failure_count += expect(foc_core::calibrate_current_task(16U) ==
+        foc_result::CALIBRATING && driver.enabled,
         "calibrate with neutral output enabled");
-    failure_count += expect(foc_core::finish_current_calibration() ==
+    failure_count += expect(foc_core::calibrate_current_task(16U) ==
         foc_result::OK && driver.enabled,
         "keep neutral output active after calibration");
 

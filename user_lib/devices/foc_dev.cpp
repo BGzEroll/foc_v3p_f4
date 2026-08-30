@@ -1206,10 +1206,17 @@ static void foc_sensor_task_entry(void *argument)
 static void foc_safety_task_entry(void *argument)
 {
     vTaskDelay(pdMS_TO_TICKS(CURRENT_SENSOR_SETTLE_TIME_MS));
-    if(foc_core::begin_current_calibration(
-        CURRENT_CALIBRATION_SAMPLE_COUNT) != foc_result::OK)
+    foc_result calibration_result =
+        foc_core::calibrate_current_task(
+            CURRENT_CALIBRATION_SAMPLE_COUNT);
+    if(calibration_result != foc_result::OK &&
+        calibration_result != foc_result::CALIBRATING)
     {
         fail_commissioning(foc_result::SENSOR_ERROR);
+    }
+    else if(calibration_result == foc_result::OK)
+    {
+        current_calibration_finished = true;
     }
 
     TickType_t last_wake_time = xTaskGetTickCount();
@@ -1221,7 +1228,8 @@ static void foc_safety_task_entry(void *argument)
                 foc_commissioning_stage::FAILED)
         {
             foc_result calibration_result =
-                foc_core::finish_current_calibration();
+                foc_core::calibrate_current_task(
+                    CURRENT_CALIBRATION_SAMPLE_COUNT);
             if(calibration_result == foc_result::OK)
             {
                 current_calibration_finished = true;

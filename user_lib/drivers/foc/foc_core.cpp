@@ -48,6 +48,8 @@ struct foc_context
     bool driver_initialized = false;
     bool initialized = false;
     bool fault_current_valid = false;
+    bool current_calibration_started = false;
+    bool current_calibration_done = false;
     volatile bool calibration_output_active = false;
 };
 
@@ -328,13 +330,13 @@ foc_result foc_core::set_rotor_alignment(int8_t rotor_direction,
 }
 
 /**
- * @brief 在三相中性 PWM 条件下开始运行态相电流零偏校准
+ * @brief 在三相中性 PWM 条件下推进一次相电流零偏校准
  *
  * @param sample_count 需要累计的同步 ADC 样本数量
  *
- * @return 校准启动结果
+ * @return 校准未完成时返回 CALIBRATING，完成时返回 OK
  */
-foc_result foc_core::begin_current_calibration(uint32_t sample_count)
+foc_result foc_core::calibrate_current_task(uint32_t sample_count)
 {
     if(!core_context.initialized){return foc_result::NOT_INITIALIZED;}
     if(!core_context.current || !core_context.current_initialized)
@@ -346,62 +348,48 @@ foc_result foc_core::begin_current_calibration(uint32_t sample_count)
         return foc_result::INVALID_STATE;
     }
 
-    core_context.driver->disable_output();
-    core_context.calibration_output_active = false;
-    foc_result calibration_result =
-        core_context.current->begin_calibration_task(sample_count);
-    if(calibration_result != foc_result::OK)
+    if(!core_context.current_calibration_started)
     {
+        core_context.driver->disable_output();
+        core_context.calibration_output_active = false;
+        foc_result calibration_result =
+            core_context.current->calibrate_task(sample_count);
+        if(calibration_result != foc_result::CALIBRATING &&
+            calibration_result != foc_result::OK)
+        {
+            return calibration_result;
+        }
+
+        if(!core_context.config.monitor_only)
+        {
+            foc_result output_result =
+                core_context.driver->enable_output_task();
+            if(output_result != foc_result::OK)
+            {
+                core_context.driver->disable_output();
+                core_context.calibration_output_active = false;
+                return output_result;
+            }
+
+            core_context.calibration_output_active = true;
+        }
+
+        core_context.current_calibration_started = true;
+        if(calibration_result == foc_result::OK)
+        {
+            core_context.current_calibration_done = true;
+        }
+
         return calibration_result;
     }
 
-    if(!core_context.config.monitor_only)
+    foc_result calibration_result =
+        core_context.current->calibrate_task(sample_count);
+    if(calibration_result == foc_result::OK)
     {
-        foc_result output_result =
-            core_context.driver->enable_output_task();
-        if(output_result != foc_result::OK)
-        {
-            core_context.driver->disable_output();
-            core_context.calibration_output_active = false;
-            return output_result;
-        }
-
-        core_context.calibration_output_active = true;
+        core_context.current_calibration_done = true;
     }
-
-    return foc_result::OK;
-}
-
-/**
- * @brief 完成相电流零偏校准并固化平均偏移
- *
- * @return 校准完成结果
- */
-foc_result foc_core::finish_current_calibration()
-{
-    if(!core_context.initialized){return foc_result::NOT_INITIALIZED;}
-    if(!core_context.current || !core_context.current_initialized)
-    {
-        return foc_result::NOT_LINKED;
-    }
-    if(core_context.state == foc_state::RUNNING)
-    {
-        return foc_result::INVALID_STATE;
-    }
-
-    return core_context.current->finish_calibration_task();
-}
-
-/**
- * @brief 查询相电流零偏校准是否完成
- *
- * @return 已得到有效零偏时返回 true
- */
-bool foc_core::current_calibration_complete()
-{
-    return core_context.initialized && core_context.current &&
-        core_context.current_initialized &&
-        core_context.current->calibration_complete_task();
+    return calibration_result;
 }
 
 /**
@@ -417,7 +405,7 @@ foc_result foc_core::enable()
     if(!core_context.rotor_initialized ||
         !core_context.current_initialized ||
         !core_context.driver_initialized ||
-        !core_context.current->calibration_complete_task())
+        !core_context.current_calibration_done)
     {
         return foc_result::NOT_READY;
     }
@@ -888,6 +876,8 @@ foc_result foc_core::init(const foc_config &config)
     core_context.config = config;
     core_context.fault_flags = 0;
     core_context.fault_current_valid = false;
+    core_context.current_calibration_started = false;
+    core_context.current_calibration_done = false;
     core_context.calibration_output_active = false;
     core_context.state = config.monitor_only ? foc_state::MONITORING :
         foc_state::READY;

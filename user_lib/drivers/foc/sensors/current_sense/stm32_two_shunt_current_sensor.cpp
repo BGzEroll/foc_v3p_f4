@@ -41,37 +41,35 @@ foc_result stm32_two_shunt_current_sensor::init()
 }
 
 /**
- * @brief 开始由后续 ADC ISR 样本完成的零偏校准
+ * @brief 在任务上下文推进一次由 ADC ISR 协作完成的零偏校准
  *
  * @param sample_count 需要累计的无电流样本数量
  *
- * @return 成功进入校准状态时返回 OK
+ * @return 校准未完成时返回 CALIBRATING，完成时返回 OK
  */
-foc_result stm32_two_shunt_current_sensor::begin_calibration_task(
+foc_result stm32_two_shunt_current_sensor::calibrate_task(
     uint32_t sample_count)
 {
     if(!initialized){return foc_result::NOT_INITIALIZED;}
     if(sample_count == 0){return foc_result::INVALID_ARGUMENT;}
+    if(calibrated){return foc_result::OK;}
 
-    calibration_sum_a = 0;
-    calibration_sum_b = 0;
-    calibration_target = sample_count;
-    calibration_collected = 0;
-    calibrated = false;
-    calibrating = true;
-    return foc_result::OK;
-}
+    if(!calibrating)
+    {
+        calibration_sum_a = 0;
+        calibration_sum_b = 0;
+        calibration_target = sample_count;
+        calibration_collected = 0;
+        calibrating = true;
+        return foc_result::CALIBRATING;
+    }
 
-/**
- * @brief 在累计足够样本后计算两个 ADC 通道零偏
- *
- * @return 校准结果
- */
-foc_result stm32_two_shunt_current_sensor::finish_calibration_task()
-{
-    if(!initialized){return foc_result::NOT_INITIALIZED;}
-    if(calibration_collected < calibration_target ||
-        calibration_target == 0)
+    if(calibration_target != sample_count)
+    {
+        return foc_result::INVALID_ARGUMENT;
+    }
+
+    if(calibration_collected < calibration_target)
     {
         return foc_result::CALIBRATING;
     }
@@ -81,16 +79,6 @@ foc_result stm32_two_shunt_current_sensor::finish_calibration_task()
     offset_b = (float)calibration_sum_b / (float)calibration_target;
     calibrated = true;
     return foc_result::OK;
-}
-
-/**
- * @brief 查询零偏校准是否完成
- *
- * @return 已计算有效零偏时返回 true
- */
-bool stm32_two_shunt_current_sensor::calibration_complete_task() const
-{
-    return calibrated;
 }
 
 /**

@@ -202,7 +202,7 @@ class current_sensor
 
     public:
         virtual foc_result init() = 0;
-        virtual foc_result calibrate_task() = 0;
+        virtual foc_result calibrate_task(uint32_t sample_count) = 0;
 
     public:
         virtual foc_result read_conversion_from_isr(

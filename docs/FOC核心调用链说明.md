@@ -42,7 +42,7 @@ user_lib/drivers/foc/
 `foc_core` 只依赖三个抽象接口：
 
 - `rotor_sensor`：任务采样，任务或 ISR 获取最新转子数据。
-- `current_sensor`：校准和 ISR 同步读取相电流。
+- `current_sensor`：任务上下文推进校准和 ISR 同步读取相电流。
 - `phase_driver`：初始化、使能、禁能、写入三相 duty 和读取硬件故障。
 
 具体的 AS5600、ADC1 双电阻采样和 TIM1 PWM 细节不会进入核心算法。
@@ -284,7 +284,10 @@ run_control_from_isr(timestamp_us)
 完成 link
 → foc_core::init(run_config)
 → Bus 任务取得有效转子样本
-→ 完成电流零偏校准
+→ 低频安全任务反复调用 foc_core::calibrate_current_task(sample_count)
+  └── current_sensor::calibrate_task(sample_count)
+      ├── ADC ISR 累计同步样本
+      └── 样本足够后计算并保存零偏
 → foc_core::set_target(target)
 → foc_core::enable()
 → 状态进入 RUNNING
