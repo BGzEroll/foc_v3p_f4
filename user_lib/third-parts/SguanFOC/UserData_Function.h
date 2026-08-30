@@ -2,30 +2,28 @@
 #define __USERDATA_FUNCTION_H
 /* 电机控制User用户设置·功能接口 */
 /* 用户自己的CODE BEGIN Includes */
-// like: #include "main.h"
+#include "adc.h"
+#include "main.h"
+#include "tim.h"
+#include "FreeRTOS.h"
+#include "task.h"
+
+extern volatile float sguan_encoder_angle_rad;
 
 /* 用户自己的CODE END Includes */
 
 static inline void User_InitialInit(void){
-    /* Your code for initing TIM and gate driver and encoder and ADC here */
-    /* like: 
-    // 开启SD使能栅极驱动器
-    HAL_GPIO_WritePin(SD1_GPIO_Port,SD1_Pin,GPIO_PIN_SET);
-    HAL_GPIO_WritePin(SD2_GPIO_Port,SD2_Pin,GPIO_PIN_SET);
-    HAL_GPIO_WritePin(SD3_GPIO_Port,SD3_Pin,GPIO_PIN_SET);
-    // 开启PWM输出
-    HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_2);
-    HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_3);
-    HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
-    // 设置TIM3计数器初始值
-    __HAL_TIM_SET_COUNTER(&htim3, 0);
-    */
+    // TIM8 的 CH1/2/3 已在板级初始化中启动，这里只在中性占空比下使能功率级。
+    uint32_t neutral_compare = (htim8.Init.Period + 1) / 2;
+    __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_1, neutral_compare);
+    __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_2, neutral_compare);
+    __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_3, neutral_compare);
+    TIM8->BDTR |= TIM_BDTR_MOE;
+    HAL_GPIO_WritePin(MOTOR_EN_GPIO_Port, MOTOR_EN_Pin, GPIO_PIN_SET);
 }
 
 static inline void User_Delay(unsigned int ms){
-    /* Your code for Delay_ms here */
-    // like: HAL_Delay(ms);
+    vTaskDelay(pdMS_TO_TICKS(ms));
 }
 
 static inline signed int User_ReadADC_Raw(unsigned char Current_CH){
@@ -35,12 +33,10 @@ static inline signed int User_ReadADC_Raw(unsigned char Current_CH){
     signed int ADC_num = 0;
     switch (Current_CH){
     case 0:
-        /* Your code for Motor CH0 raw */
-        // like: ADC_num = (signed int)ADC_InjectedValues[1];
+        ADC_num = (signed int)hadc2.Instance->JDR1;
         break;
     case 1:
-        /* Your code for Motor CH1 raw */
-        // like: ADC_num = (signed int)ADC_InjectedValues[2];
+        ADC_num = (signed int)hadc2.Instance->JDR2;
         break;
     default:
         break;
@@ -49,30 +45,20 @@ static inline signed int User_ReadADC_Raw(unsigned char Current_CH){
 }
 
 static inline float User_Encoder_ReadRad(void){
-    float Rad_num = 0.0f;
-    /* Your code for encoder radian position (0-2pi) if you use SensorFOC */
-    // like: Rad_num = Encoder_GetRad();
-    return Rad_num;
+    return sguan_encoder_angle_rad;
 }
 
 static inline void User_PwmDuty_Set(unsigned short int Duty_u,
                                 unsigned short int Duty_v,
                                 unsigned short int Duty_w){
-    /* Your code for Motor PWM_CH0~2 duty set */
-    /* 若是使用正常6相，设置死区补偿，可在此设计 */
-    /* like: 
-    __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,Duty_u);
-    __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_2,Duty_v);
-    __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_3,Duty_w);
-    */
+    // 驱动板相序为逻辑 U/V/W -> TIM8 CH3/CH2/CH1，沿用 foc_test 配置。
+    TIM8->CCR3 = Duty_u;
+    TIM8->CCR2 = Duty_v;
+    TIM8->CCR1 = Duty_w;
 }
 
 static inline float User_VBUS_DataGet(void){
-    // float VBUS_num = 0.0f;
-    /* Your code for motor VBUS_Voltage Data return if you use it */
-    
-    // 如果不使用电压功能，返回-9999.0f（正常电压不会是负数）
-    return -9999.0f;
+    return (float)hadc3.Instance->DR * 3.3f * 11.0f / 4095.0f;
 }
 
 static inline float User_Temperature_DataGet(void){

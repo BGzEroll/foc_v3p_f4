@@ -1,6 +1,7 @@
 #include "i2c_bus.h"
 
 #include "i2c.h"
+#include "system/sys_time.h"
 #include "FreeRTOS.h"
 #include "semphr.h"
 #include "task.h"
@@ -11,7 +12,12 @@ enum class i2c_transfer_direction : uint8_t
     WRITE
 };
 
-// 管理一条物理 I2C 总线的互斥访问、DMA 状态和完成同步。
+static constexpr uint8_t I2C_TRANSFER_ATTEMPT_COUNT = 2;
+static constexpr uint8_t I2C_RECOVERY_CLOCK_PULSES = 9;
+static constexpr uint32_t I2C_RECOVERY_DELAY_US = 5;
+static constexpr uint32_t I2C_RECOVERY_FORCE_DELAY_US = 20;
+
+// 管理一条物理 I2C 总线的互斥访问、DMA 状态、完成同步和自动恢复。
 class i2c_dev
 {
     public:
@@ -179,6 +185,124 @@ static i2c_dev *get_dev(I2C_HandleTypeDef *handle)
 }
 
 /**
+ * @brief 根据 I2C 外设获取总线恢复所需的 GPIO 引脚
+ *
+ * @param target_handle I2C 外设句柄
+ * @param gpio_port 用于输出时钟和数据的 GPIO 端口
+ * @param scl_pin SCL 引脚
+ * @param sda_pin SDA 引脚
+ *
+ * @return 找到对应引脚配置时返回 true
+ */
+static bool get_i2c_gpio_config(I2C_HandleTypeDef *target_handle,
+    GPIO_TypeDef *&gpio_port,
+    uint16_t &scl_pin,
+    uint16_t &sda_pin)
+{
+    if(!target_handle)
+    {
+        return false;
+    }
+
+    gpio_port = GPIOB;
+    if(target_handle->Instance == I2C1)
+    {
+        scl_pin = GPIO_PIN_6;
+        sda_pin = GPIO_PIN_7;
+        return true;
+    }
+
+    if(target_handle->Instance == I2C2)
+    {
+        scl_pin = GPIO_PIN_10;
+        sda_pin = GPIO_PIN_11;
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * @brief 通过 APB 外设复位清除 STM32 I2C 外设内部状态机
+ *
+ * @param target_handle 待复位的 I2C 外设句柄
+ *
+ * @return 找到对应外设并完成复位时返回 true
+ */
+static bool reset_i2c_peripheral(I2C_HandleTypeDef *target_handle)
+{
+    if(!target_handle || !target_handle->Instance)
+    {
+        return false;
+    }
+
+    if(target_handle->Instance == I2C1)
+    {
+        __HAL_RCC_I2C1_FORCE_RESET();
+        __DSB();
+        sys_time::delay_us(I2C_RECOVERY_DELAY_US);
+        __HAL_RCC_I2C1_RELEASE_RESET();
+        __DSB();
+        return true;
+    }
+
+    if(target_handle->Instance == I2C2)
+    {
+        __HAL_RCC_I2C2_FORCE_RESET();
+        __DSB();
+        sys_time::delay_us(I2C_RECOVERY_DELAY_US);
+        __HAL_RCC_I2C2_RELEASE_RESET();
+        __DSB();
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * @brief 判断 I2C 时钟线和数据线是否都已释放
+ *
+ * @param target_handle I2C 外设句柄
+ *
+ * @return 两条线路均为高电平时返回 true
+ */
+static bool i2c_lines_released(I2C_HandleTypeDef *target_handle)
+{
+    GPIO_TypeDef *gpio_port = nullptr;
+    uint16_t scl_pin = 0;
+    uint16_t sda_pin = 0;
+
+    if(!get_i2c_gpio_config(target_handle,
+        gpio_port,
+        scl_pin,
+        sda_pin))
+    {
+        return false;
+    }
+
+    return HAL_GPIO_ReadPin(gpio_port, scl_pin) == GPIO_PIN_SET &&
+           HAL_GPIO_ReadPin(gpio_port, sda_pin) == GPIO_PIN_SET;
+}
+
+/**
+ * @brief 判断 I2C 外设是否仍处于忙状态
+ *
+ * @param target_handle I2C 外设句柄
+ *
+ * @return HAL 状态或硬件 BUSY 标志未释放时返回 true
+ */
+static bool i2c_peripheral_busy(I2C_HandleTypeDef *target_handle)
+{
+    if(!target_handle || !target_handle->Instance)
+    {
+        return true;
+    }
+
+    return HAL_I2C_GetState(target_handle) != HAL_I2C_STATE_READY ||
+           (target_handle->Instance->SR2 & I2C_SR2_BUSY) != 0;
+}
+
+/**
  * @brief 创建物理 I2C 总线管理对象
  *
  * @param handle HAL I2C 句柄
@@ -203,6 +327,11 @@ i2c_result i2c_dev::init()
     if(!handle || !handle->Instance || !handle->hdmarx || !handle->hdmatx)
     {
         return i2c_result::INIT_FAILED;
+    }
+
+    if(!recover_bus())
+    {
+        return i2c_result::RECOVERY_FAILED;
     }
 
     mutex = xSemaphoreCreateMutexStatic(&mutex_storage);
@@ -310,11 +439,6 @@ i2c_result i2c_dev::transfer_bytes(i2c_transfer_direction direction,
     uint32_t lock_timeout_ms,
     uint32_t transfer_timeout_ms)
 {
-    if(!initialized)
-    {
-        return i2c_result::NOT_INITIALIZED;
-    }
-
     if(device_address > 0x7F || !data || size == 0)
     {
         return i2c_result::INVALID_ARGUMENT;
@@ -323,6 +447,16 @@ i2c_result i2c_dev::transfer_bytes(i2c_transfer_direction direction,
         xTaskGetSchedulerState() != taskSCHEDULER_RUNNING)
     {
         return i2c_result::INVALID_CONTEXT;
+    }
+
+    // 总线恢复失败后允许后续任务重新初始化 HAL 和 DMA，避免永久停留在未初始化状态。
+    if(!initialized)
+    {
+        i2c_result init_result = init();
+        if(init_result != i2c_result::OK)
+        {
+            return init_result;
+        }
     }
 
     TickType_t lock_timeout = milliseconds_to_ticks(lock_timeout_ms);
@@ -335,52 +469,91 @@ i2c_result i2c_dev::transfer_bytes(i2c_transfer_direction direction,
     {
     }
 
-    transfer_result = i2c_result::BUSY;
-    transfer_active = true;
-
     uint16_t hal_device_address = (uint16_t)(device_address << 1);
-    HAL_StatusTypeDef hal_status;
-
-    if(direction == i2c_transfer_direction::READ)
+    i2c_result result = i2c_result::BUS_ERROR;
+    for(uint8_t attempt = 0;
+        attempt < I2C_TRANSFER_ATTEMPT_COUNT;
+        attempt++)
     {
-        hal_status = HAL_I2C_Mem_Read_DMA(handle,
-            hal_device_address,
-            register_address,
-            I2C_MEMADD_SIZE_8BIT,
-            data,
-            size);
-    }
-    else
-    {
-        hal_status = HAL_I2C_Mem_Write_DMA(handle,
-            hal_device_address,
-            register_address,
-            I2C_MEMADD_SIZE_8BIT,
-            data,
-            size);
+        while(xSemaphoreTake(completion_semaphore, 0) == pdTRUE)
+        {
+        }
+
+        // 先检查线路和外设状态，避免 HAL 在残留 BUSY 状态下长时间等待。
+        if((!i2c_lines_released(handle) || i2c_peripheral_busy(handle)) &&
+            !recover_bus())
+        {
+            result = i2c_result::RECOVERY_FAILED;
+            break;
+        }
+
+        if(!i2c_lines_released(handle) || i2c_peripheral_busy(handle))
+        {
+            result = i2c_result::RECOVERY_FAILED;
+            break;
+        }
+
+        transfer_result = i2c_result::BUSY;
+        transfer_active = true;
+
+        HAL_StatusTypeDef hal_status;
+        if(direction == i2c_transfer_direction::READ)
+        {
+            hal_status = HAL_I2C_Mem_Read_DMA(handle,
+                hal_device_address,
+                register_address,
+                I2C_MEMADD_SIZE_8BIT,
+                data,
+                size);
+        }
+        else
+        {
+            hal_status = HAL_I2C_Mem_Write_DMA(handle,
+                hal_device_address,
+                register_address,
+                I2C_MEMADD_SIZE_8BIT,
+                data,
+                size);
+        }
+
+        if(hal_status != HAL_OK)
+        {
+            result = map_hal_status(handle, hal_status);
+            cancel_active_transfer();
+        }
+        else
+        {
+            TickType_t transfer_timeout =
+                milliseconds_to_ticks(transfer_timeout_ms);
+            if(xSemaphoreTake(completion_semaphore,
+                transfer_timeout) != pdTRUE)
+            {
+                result = i2c_result::TRANSFER_TIMEOUT;
+                cancel_active_transfer();
+            }
+            else
+            {
+                result = transfer_result;
+            }
+        }
+
+        if(result == i2c_result::OK)
+        {
+            break;
+        }
+
+        if(!recover_bus())
+        {
+            result = i2c_result::RECOVERY_FAILED;
+            break;
+        }
+
+        if(attempt + 1 >= I2C_TRANSFER_ATTEMPT_COUNT)
+        {
+            break;
+        }
     }
 
-    if(hal_status != HAL_OK)
-    {
-        i2c_result result = map_hal_status(handle, hal_status);
-        cancel_active_transfer();
-        bool recovered = recover_bus();
-        xSemaphoreGive(mutex);
-        return recovered ? result : i2c_result::RECOVERY_FAILED;
-    }
-
-    TickType_t transfer_timeout =
-        milliseconds_to_ticks(transfer_timeout_ms);
-    if(xSemaphoreTake(completion_semaphore, transfer_timeout) != pdTRUE)
-    {
-        cancel_active_transfer();
-        bool recovered = recover_bus();
-        xSemaphoreGive(mutex);
-        return recovered ? i2c_result::TRANSFER_TIMEOUT :
-            i2c_result::RECOVERY_FAILED;
-    }
-
-    i2c_result result = transfer_result;
     xSemaphoreGive(mutex);
     return result;
 }
@@ -392,12 +565,95 @@ i2c_result i2c_dev::transfer_bytes(i2c_transfer_direction direction,
  */
 bool i2c_dev::recover_bus()
 {
-    bool recovered = HAL_I2C_DeInit(handle) == HAL_OK &&
-        HAL_I2C_Init(handle) == HAL_OK;
-
-    while(xSemaphoreTake(completion_semaphore, 0) == pdTRUE)
+    GPIO_TypeDef *gpio_port = nullptr;
+    uint16_t scl_pin = 0;
+    uint16_t sda_pin = 0;
+    if(!get_i2c_gpio_config(handle,
+        gpio_port,
+        scl_pin,
+        sda_pin))
     {
+        return false;
     }
+
+    if(HAL_I2C_DeInit(handle) != HAL_OK)
+    {
+        return false;
+    }
+
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+
+    GPIO_InitTypeDef gpio_init = {0};
+    gpio_init.Pin = scl_pin | sda_pin;
+    gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio_init.Pull = GPIO_NOPULL;
+    gpio_init.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    HAL_GPIO_WritePin(gpio_port,
+        scl_pin | sda_pin,
+        GPIO_PIN_RESET);
+    HAL_GPIO_Init(gpio_port, &gpio_init);
+
+    // 先用推挽输出制造低电平和 STOP，清除从设备残留的半帧状态。
+    HAL_GPIO_WritePin(gpio_port,
+        scl_pin | sda_pin,
+        GPIO_PIN_RESET);
+    sys_time::delay_us(I2C_RECOVERY_FORCE_DELAY_US);
+    HAL_GPIO_WritePin(gpio_port, scl_pin, GPIO_PIN_SET);
+    sys_time::delay_us(I2C_RECOVERY_FORCE_DELAY_US);
+    HAL_GPIO_WritePin(gpio_port, sda_pin, GPIO_PIN_SET);
+    sys_time::delay_us(I2C_RECOVERY_FORCE_DELAY_US);
+
+    // 切回开漏释放模式；若 SDA 被从设备拉低，则发送最多 9 个时钟脉冲。
+    gpio_init.Mode = GPIO_MODE_OUTPUT_OD;
+    HAL_GPIO_Init(gpio_port, &gpio_init);
+    HAL_GPIO_WritePin(gpio_port,
+        scl_pin | sda_pin,
+        GPIO_PIN_SET);
+    sys_time::delay_us(I2C_RECOVERY_DELAY_US);
+    for(uint8_t pulse = 0;
+        pulse < I2C_RECOVERY_CLOCK_PULSES;
+        pulse++)
+    {
+        if(HAL_GPIO_ReadPin(gpio_port, scl_pin) == GPIO_PIN_SET &&
+           HAL_GPIO_ReadPin(gpio_port, sda_pin) == GPIO_PIN_SET)
+        {
+            break;
+        }
+
+        HAL_GPIO_WritePin(gpio_port, scl_pin, GPIO_PIN_RESET);
+        sys_time::delay_us(I2C_RECOVERY_DELAY_US);
+        HAL_GPIO_WritePin(gpio_port, scl_pin, GPIO_PIN_SET);
+        sys_time::delay_us(I2C_RECOVERY_DELAY_US);
+    }
+
+    // SCL 为高时先拉低再释放 SDA，形成一个明确的 STOP 条件。
+    HAL_GPIO_WritePin(gpio_port, scl_pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(gpio_port, sda_pin, GPIO_PIN_RESET);
+    sys_time::delay_us(I2C_RECOVERY_DELAY_US);
+    HAL_GPIO_WritePin(gpio_port, scl_pin, GPIO_PIN_SET);
+    sys_time::delay_us(I2C_RECOVERY_DELAY_US);
+    HAL_GPIO_WritePin(gpio_port, sda_pin, GPIO_PIN_SET);
+    sys_time::delay_us(I2C_RECOVERY_DELAY_US);
+
+    bool lines_released =
+        HAL_GPIO_ReadPin(gpio_port, scl_pin) == GPIO_PIN_SET &&
+        HAL_GPIO_ReadPin(gpio_port, sda_pin) == GPIO_PIN_SET;
+    HAL_GPIO_DeInit(gpio_port, scl_pin | sda_pin);
+
+    bool peripheral_reset = reset_i2c_peripheral(handle);
+    bool i2c_initialized = peripheral_reset && HAL_I2C_Init(handle) == HAL_OK;
+    bool recovered = lines_released && i2c_initialized &&
+        i2c_lines_released(handle) && !i2c_peripheral_busy(handle);
+
+    if(completion_semaphore)
+    {
+        while(xSemaphoreTake(completion_semaphore, 0) == pdTRUE)
+        {
+        }
+    }
+
+    transfer_active = false;
+    transfer_result = i2c_result::OK;
 
     if(!recovered)
     {

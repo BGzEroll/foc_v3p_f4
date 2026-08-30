@@ -6,7 +6,7 @@
 // 电机实体参数设置(根据实际需要填写)
 static inline void User_MotorSet(void){
     // 1.mode选择电机的运行模式
-    // Sguan.mode = Current_SINGLE_MODE;
+    Sguan.mode = Current_SINGLE_MODE;
     // 如果你要在电机启动后主动切换模式，这个地方请不要使用
     // 它会在每次启动时，刷新你的更改值
     // 2.flag电机标志位
@@ -23,17 +23,17 @@ static inline void User_MotorSet(void){
 
     Sguan.motor.Motor_Dir = 1;          // (int8_t)电机方向1->正向，负1->负向
     Sguan.motor.PWM_Dir = -1;           // (int8_t)PWM占空比高低对应1->正向，负1->负向
-    Sguan.motor.Duty = 4249;            // (uint16_t)PWM满占空比数值
+    Sguan.motor.Duty = 4200;            // (uint16_t)PWM满占空比数值
 
     Sguan.motor.Encoder_Dir = -1;       // (int8_t)编码器方向1->正向，负1->负向
 
     Sguan.motor.Current_Dir0 = 1;       // (int8_t)相线电流方向1->正向，负1->负向
-    Sguan.motor.Current_Dir1 = 1;       // (int8_t)相线电流方向1->正向，负1->负向
+    Sguan.motor.Current_Dir1 = -1;      // (int8_t)相线电流方向1->正向，负1->负向
     Sguan.motor.Current_Num = 1;        // (uint8_t)电流通道0->AB相，1->AC相，2->BC相
     Sguan.motor.ADC_Precision = 4096;   // (uint32_t)ADC采样精度
-    Sguan.motor.Amplifier = 10.0f;      // (float)运算放大器增益
+    Sguan.motor.Amplifier = 50.0f;      // (float)运算放大器增益
     Sguan.motor.MCU_Voltage = 3.3f;     // (float)DSP/单片机的ADC电压基准
-    Sguan.motor.Sampling_Rs = 0.005f;   // (float)采样电阻大小
+    Sguan.motor.Sampling_Rs = 0.01f;    // (float)采样电阻大小
     // 5.电机安全设计
     Sguan.safe.VBUS_MAX = 14.0f;        // (float)母线电压值波动MAX阈值
     Sguan.safe.VBUS_MIM = 10.0f;        // (float)母线电压值波动MIN阈值
@@ -43,8 +43,8 @@ static inline void User_MotorSet(void){
     Sguan.safe.Temp_MIN = -20.0f;       // (float)驱动器允许最小温度
     Sguan.safe.Temp_watchdog_limit = 1000;
 
-    Sguan.safe.Dcur_MAX = 60.0f;        // (float)电机最大电流D轴限制
-    Sguan.safe.Qcur_MAX = 60.0f;        // (float)电机最大电流Q轴限制
+    Sguan.safe.Dcur_MAX = 1.8f;         // (float)电机最大电流D轴限制
+    Sguan.safe.Qcur_MAX = 1.8f;         // (float)电机最大电流Q轴限制
     Sguan.safe.DQcur_watchdog_limit = 1000;
 
     Sguan.safe.DISABLED_watchdog_limit = 1000;

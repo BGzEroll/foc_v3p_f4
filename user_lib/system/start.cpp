@@ -1,4 +1,4 @@
-#include "debug/foc_open_loop_debug.h"
+#include "devices/foc_dev.h"
 #include "devices/led_dev.h"
 
 /**
@@ -6,6 +6,6 @@
  */
 extern "C" void start_init_all(void)
 {
-    foc_open_loop_debug::init();
+    foc_dev::init();
     led_dev::init();
 }
