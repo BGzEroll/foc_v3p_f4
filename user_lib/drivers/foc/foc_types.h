@@ -96,16 +96,11 @@ struct phase_duty
 
 struct foc_target
 {
-    uint32_t sequence = 0;
-    uint32_t timestamp_ms = 0;
-    uint32_t electrical_angle_timestamp_us = 0;
     foc_control_mode mode = foc_control_mode::DISABLED;
     float d_axis_current_a = 0.0f;
     float q_axis_current_a = 0.0f;
     float d_axis_voltage_v = 0.0f;
     float q_axis_voltage_v = 0.0f;
-    float electrical_angle_rad = 0.0f;
-    float electrical_velocity_rad_s = 0.0f;
 };
 
 struct foc_config

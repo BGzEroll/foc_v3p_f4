@@ -1,6 +1,7 @@
 #include "foc_core.h"
 
 #include "foc_math.h"
+#include "system/sys_time.h"
 #include "system/topic.h"
 #include "FreeRTOS.h"
 #include <math.h>
@@ -36,7 +37,7 @@ struct foc_context
     phase_current_sample fault_current{};
     volatile foc_state state = foc_state::UNINITIALIZED;
     volatile uint32_t fault_flags = 0;
-    uint32_t target_sequence = 0;
+    uint32_t command_sequence = 0;
     uint32_t control_isr_prescaler = 0;
     uint32_t control_sequence = 0;
     uint32_t snapshot_sequence = 0;
@@ -54,7 +55,7 @@ struct foc_context
 };
 
 static foc_context core_context;
-static topic::latest_topic<foc_target> target_topic;
+static topic::latest_topic<foc_command> command_topic;
 static topic::latest_topic<control_telemetry> telemetry_topic;
 static topic::latest_topic<fault_request> fault_request_topic;
 static topic::latest_topic<phase_current_sample> current_sample_topic;
@@ -130,84 +131,78 @@ static void publish_current_sample_from_isr(
 }
 
 /**
- * @brief 绑定唯一转子位置传感器
+ * @brief 发布普通业务目标并由核心生成命令元数据
  *
- * @param sensor 具有静态生命周期的传感器对象
+ * @param target D-Q 控制目标
  *
- * @return 绑定结果
+ * @return 目标发布结果
  */
-foc_result foc_core::link_rotor_sensor(rotor_sensor &sensor)
+foc_result foc::set_target(const foc_target &target)
 {
-    if(core_context.initialized || core_context.rotor)
-    {
-        return foc_result::INVALID_STATE;
-    }
-
-    core_context.rotor = &sensor;
-    return foc_result::OK;
-}
-
-/**
- * @brief 绑定唯一相电流传感器
- *
- * @param sensor 具有静态生命周期的传感器对象
- *
- * @return 绑定结果
- */
-foc_result foc_core::link_current_sensor(current_sensor &sensor)
-{
-    if(core_context.initialized || core_context.current)
-    {
-        return foc_result::INVALID_STATE;
-    }
-
-    core_context.current = &sensor;
-    return foc_result::OK;
-}
-
-/**
- * @brief 绑定唯一三相功率驱动
- *
- * @param driver 具有静态生命周期的驱动对象
- *
- * @return 绑定结果
- */
-foc_result foc_core::link_phase_driver(phase_driver &driver)
-{
-    if(core_context.initialized || core_context.driver)
-    {
-        return foc_result::INVALID_STATE;
-    }
-
-    core_context.driver = &driver;
-    return foc_result::OK;
-}
-
-/**
- * @brief 发布将在控制周期边界读取的新目标
- *
- * @param target 新运行目标
- *
- * @return 目标校验和发布结果
- */
-foc_result foc_core::set_target(const foc_target &target)
-{
-    if(!core_context.initialized){return foc_result::NOT_INITIALIZED;}
-
-    // 目标会被控制 ISR 直接读取，统一拦截 NaN/Inf，避免无效值进入控制链。
-    if(!isfinite(target.d_axis_current_a) ||
-        !isfinite(target.q_axis_current_a) ||
-        !isfinite(target.d_axis_voltage_v) ||
-        !isfinite(target.q_axis_voltage_v) ||
-        !isfinite(target.electrical_angle_rad) ||
-        !isfinite(target.electrical_velocity_rad_s))
+    // 开环角度和速度属于 commissioning 的内部命令，普通目标不携带这些字段。
+    if(target.mode == foc_control_mode::OPEN_LOOP_VOLTAGE)
     {
         return foc_result::INVALID_ARGUMENT;
     }
 
-    foc_target pending_target = target;
-    pending_target.sequence = ++core_context.target_sequence;
-    if(!target_topic.publish(pending_target))
+    foc_command command{};
+    command.target = target;
+    command.timestamp_ms = sys_time::get_ms_tick();
+    command.electrical_angle_timestamp_us = sys_time::get_us_tick();
+    return foc::internal::set_command(command);
+}
+
+/**
+ * @brief 一次性绑定 FOC 所需硬件抽象
+ *
+ * @param hardware 转子、电流和功率驱动接口
+ *
+ * @return 绑定结果
+ */
+foc_result foc::internal::bind_hardware(const foc_hardware &hardware)
+{
+    if(core_context.initialized || core_context.rotor ||
+        core_context.current || core_context.driver)
+    {
+        return foc_result::INVALID_STATE;
+    }
+
+    if(!hardware.rotor || !hardware.driver)
+    {
+        return foc_result::NOT_LINKED;
+    }
+
+    core_context.rotor = hardware.rotor;
+    core_context.current = hardware.current;
+    core_context.driver = hardware.driver;
+    return foc_result::OK;
+}
+
+/**
+ * @brief 发布核心内部控制命令
+ *
+ * @param command 新控制命令
+ *
+ * @return 命令校验和发布结果
+ */
+foc_result foc::internal::set_command(const foc_command &command)
+{
+    if(!core_context.initialized){return foc_result::NOT_INITIALIZED;}
+
+    // 命令会被控制 ISR 直接读取，统一拦截 NaN/Inf，避免无效值进入控制链。
+    if(!isfinite(command.target.d_axis_current_a) ||
+        !isfinite(command.target.q_axis_current_a) ||
+        !isfinite(command.target.d_axis_voltage_v) ||
+        !isfinite(command.target.q_axis_voltage_v) ||
+        !isfinite(command.electrical_angle_rad) ||
+        !isfinite(command.electrical_velocity_rad_s))
+    {
+        return foc_result::INVALID_ARGUMENT;
+    }
+
+    foc_command pending_command = command;
+    pending_command.sequence = ++core_context.command_sequence;
+    if(!command_topic.publish(pending_command))
     {
         return foc_result::TOPIC_ERROR;
     }
@@ -223,7 +218,7 @@ foc_result foc_core::set_target(const foc_target &target)
  *
  * @return 参数和状态均有效时返回 OK
  */
-foc_result foc_core::set_rotor_alignment(int8_t rotor_direction,
+foc_result foc::internal::set_rotor_alignment(int8_t rotor_direction,
     float electrical_zero_offset_rad)
 {
     if(!core_context.initialized){return foc_result::NOT_INITIALIZED;}
@@ -252,7 +247,7 @@ foc_result foc_core::set_rotor_alignment(int8_t rotor_direction,
  *
  * @return 校准未完成时返回 CALIBRATING，完成时返回 OK
  */
-foc_result foc_core::calibrate_current_task(uint32_t sample_count)
+foc_result foc::internal::calibrate_current_task(uint32_t sample_count)
 {
     if(!core_context.initialized){return foc_result::NOT_INITIALIZED;}
     if(!core_context.current || !core_context.current_initialized)
@@ -313,7 +308,7 @@ foc_result foc_core::calibrate_current_task(uint32_t sample_count)
  *
  * @return 首版监视配置固定拒绝使能
  */
-foc_result foc_core::enable()
+foc_result foc::enable()
 {
     if(!core_context.initialized){return foc_result::NOT_INITIALIZED;}
     if(core_context.config.monitor_only){return foc_result::DISABLED;}
@@ -326,9 +321,9 @@ foc_result foc_core::enable()
         return foc_result::NOT_READY;
     }
 
-    foc_target target{};
-    if(!target_topic.peek(target) ||
-        target.mode == foc_control_mode::DISABLED)
+    foc_command command{};
+    if(!command_topic.peek(command) ||
+        command.target.mode == foc_control_mode::DISABLED)
     {
         return foc_result::NOT_READY;
     }
@@ -346,7 +341,7 @@ foc_result foc_core::enable()
 /**
  * @brief 关闭硬件输出并退出运行状态
  */
-void foc_core::disable()
+void foc::disable()
 {
     if(core_context.driver)
     {
@@ -368,7 +363,7 @@ void foc_core::disable()
  *
  * @return 故障清除结果
  */
-foc_result foc_core::clear_fault()
+foc_result foc::clear_fault()
 {
     if(!core_context.initialized){return foc_result::NOT_INITIALIZED;}
     core_context.driver->disable_output();
@@ -400,7 +395,7 @@ foc_result foc_core::clear_fault()
  *
  * @return 本周期执行结果
  */
-foc_result foc_core::run_control_from_isr(uint32_t timestamp_us)
+foc_result foc::internal::run_control_from_isr(uint32_t timestamp_us)
 {
     if(!core_context.initialized){return foc_result::NOT_INITIALIZED;}
 
@@ -495,13 +490,15 @@ foc_result foc_core::run_control_from_isr(uint32_t timestamp_us)
         return foc_result::SAMPLE_STALE;
     }
 
-    foc_target target{};
-    if(!target_topic.peek_from_isr(target) ||
-        target.mode == foc_control_mode::DISABLED)
+    foc_command command{};
+    if(!command_topic.peek_from_isr(command) ||
+        command.target.mode == foc_control_mode::DISABLED)
     {
         latch_fault(foc_fault_mask(foc_fault::COMMAND_TIMEOUT));
         return foc_result::NOT_READY;
     }
+
+    const foc_target &target = command.target;
 
     float mechanical_angle = rotor.mechanical_angle_rad;
     if(rotor_age_us <= core_context.config.rotor_extrapolation_limit_us)
@@ -514,10 +511,10 @@ foc_result foc_core::run_control_from_isr(uint32_t timestamp_us)
     if(target.mode == foc_control_mode::OPEN_LOOP_VOLTAGE)
     {
         uint32_t target_age_us = timestamp_us -
-            target.electrical_angle_timestamp_us;
+            command.electrical_angle_timestamp_us;
         electrical_angle = foc_math::normalize_angle(
-            target.electrical_angle_rad +
-            target.electrical_velocity_rad_s *
+            command.electrical_angle_rad +
+            command.electrical_velocity_rad_s *
             (float)target_age_us * 1.0e-6f);
     }
     else
@@ -616,7 +613,7 @@ foc_result foc_core::run_control_from_isr(uint32_t timestamp_us)
  *
  * @return 本次初始化或采样结果
  */
-foc_result foc_core::update_sensors()
+foc_result foc::internal::update_sensors()
 {
     if(!core_context.initialized){return foc_result::NOT_INITIALIZED;}
 
@@ -651,7 +648,7 @@ foc_result foc_core::update_sensors()
  *
  * @return 本次安全检查结果
  */
-foc_result foc_core::update_safety(uint32_t timestamp_ms)
+foc_result foc::internal::update_safety(uint32_t timestamp_ms)
 {
     if(!core_context.initialized){return foc_result::NOT_INITIALIZED;}
 
@@ -663,8 +660,9 @@ foc_result foc_core::update_safety(uint32_t timestamp_ms)
     uint32_t rotor_age_us = rotor_result == foc_result::OK ?
         sample_age_us(now_us, rotor.timestamp_us) : now_us;
     uint32_t new_fault_flags = 0;
-    foc_target target{};
-    target_topic.peek(target);
+    foc_command command{};
+    command_topic.peek(command);
+    const foc_target &target = command.target;
 
     if(core_context.consecutive_bus_error_count >=
         core_context.config.communication_error_limit)
@@ -686,7 +684,7 @@ foc_result foc_core::update_safety(uint32_t timestamp_ms)
     if(!core_context.config.monitor_only &&
         core_context.state == foc_state::RUNNING &&
         target.mode != foc_control_mode::DISABLED &&
-        timestamp_ms - target.timestamp_ms >
+        timestamp_ms - command.timestamp_ms >
             core_context.config.command_timeout_ms)
     {
         new_fault_flags |= foc_fault_mask(foc_fault::COMMAND_TIMEOUT);
@@ -761,7 +759,7 @@ foc_result foc_core::update_safety(uint32_t timestamp_ms)
  *
  * @return 已存在快照时返回 true
  */
-bool foc_core::peek_snapshot(foc_snapshot &snapshot)
+bool foc::peek_snapshot(foc_snapshot &snapshot)
 {
     return snapshot_topic.peek(snapshot);
 }
@@ -773,7 +771,7 @@ bool foc_core::peek_snapshot(foc_snapshot &snapshot)
  *
  * @return 初始化结果
  */
-foc_result foc_core::init(const foc_config &config)
+foc_result foc::init(const foc_config &config)
 {
     if(core_context.initialized){return foc_result::INVALID_STATE;}
     if(!core_context.rotor || !core_context.driver)
@@ -820,7 +818,7 @@ foc_result foc_core::init(const foc_config &config)
         return foc_result::INVALID_CONFIG;
     }
 
-    if(!target_topic.init() || !telemetry_topic.init() ||
+    if(!command_topic.init() || !telemetry_topic.init() ||
         !fault_request_topic.init() || !current_sample_topic.init() ||
         !snapshot_topic.init())
     {
@@ -848,9 +846,9 @@ foc_result foc_core::init(const foc_config &config)
         foc_state::READY;
     core_context.initialized = true;
 
-    foc_target initial_target{};
-    initial_target.sequence = ++core_context.target_sequence;
-    if(!target_topic.publish(initial_target))
+    foc_command initial_command{};
+    initial_command.sequence = ++core_context.command_sequence;
+    if(!command_topic.publish(initial_command))
     {
         latch_fault(foc_fault_mask(foc_fault::INTERNAL));
         return foc_result::TOPIC_ERROR;

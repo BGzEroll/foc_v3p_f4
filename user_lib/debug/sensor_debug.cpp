@@ -1,7 +1,7 @@
 #include "sensor_debug.h"
 
 #include "drivers/bus/uart_bus.h"
-#include "drivers/foc/foc_core.h"
+#include "drivers/foc/foc.h"
 #include "devices/foc_dev.h"
 #include "devices/mpu6050_dev.h"
 #include "main.h"
@@ -354,7 +354,7 @@ static void sensor_debug_task_entry(void *argument)
         }
 
         foc_snapshot foc_data{};
-        if(foc_core::peek_snapshot(foc_data) &&
+        if(foc::peek_snapshot(foc_data) &&
             foc_data.sequence != previous_foc_sequence)
         {
             send_foc_snapshot(foc_data);

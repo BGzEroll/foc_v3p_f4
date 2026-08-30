@@ -1,7 +1,8 @@
 #include "foc_dev.h"
 
-#include "drivers/foc/foc_core.h"
+#include "drivers/foc/foc.h"
 #include "drivers/foc/foc_math.h"
+#include "drivers/foc/internal/foc_runtime.h"
 #include "drivers/foc/phase_driver/tim1_phase_driver.h"
 #include "drivers/foc/sensors/current_sense/stm32_two_shunt_current_sensor.h"
 #include "drivers/foc/sensors/encoder/as5600_rotor_sensor.h"
@@ -355,7 +356,7 @@ static void enter_commissioning_stage(foc_commissioning_stage stage,
  */
 static void fail_commissioning(foc_result result)
 {
-    foc_core::disable();
+    foc::disable();
     commissioning_status.stage = foc_commissioning_stage::FAILED;
     commissioning_status.result = result;
     publish_commissioning_status();
@@ -372,13 +373,13 @@ static void fail_commissioning(foc_result result)
 static foc_result set_alignment_target(uint32_t timestamp_ms,
     float electrical_angle_rad)
 {
-    foc_target target{};
-    target.timestamp_ms = timestamp_ms;
-    target.mode = foc_control_mode::OPEN_LOOP_VOLTAGE;
-    target.d_axis_voltage_v = ALIGNMENT_VOLTAGE_V;
-    target.electrical_angle_rad = electrical_angle_rad;
-    target.electrical_angle_timestamp_us = sys_time::get_us_tick();
-    return foc_core::set_target(target);
+    foc_command command{};
+    command.timestamp_ms = timestamp_ms;
+    command.target.mode = foc_control_mode::OPEN_LOOP_VOLTAGE;
+    command.target.d_axis_voltage_v = ALIGNMENT_VOLTAGE_V;
+    command.electrical_angle_rad = electrical_angle_rad;
+    command.electrical_angle_timestamp_us = sys_time::get_us_tick();
+    return foc::internal::set_command(command);
 }
 
 /**
@@ -396,14 +397,14 @@ static foc_result set_open_loop_target(uint32_t timestamp_ms,
     float q_axis_voltage_v,
     float electrical_velocity_rad_s)
 {
-    foc_target target{};
-    target.timestamp_ms = timestamp_ms;
-    target.electrical_angle_timestamp_us = sys_time::get_us_tick();
-    target.mode = foc_control_mode::OPEN_LOOP_VOLTAGE;
-    target.q_axis_voltage_v = q_axis_voltage_v;
-    target.electrical_angle_rad = electrical_angle_rad;
-    target.electrical_velocity_rad_s = electrical_velocity_rad_s;
-    return foc_core::set_target(target);
+    foc_command command{};
+    command.timestamp_ms = timestamp_ms;
+    command.electrical_angle_timestamp_us = sys_time::get_us_tick();
+    command.target.mode = foc_control_mode::OPEN_LOOP_VOLTAGE;
+    command.target.q_axis_voltage_v = q_axis_voltage_v;
+    command.electrical_angle_rad = electrical_angle_rad;
+    command.electrical_velocity_rad_s = electrical_velocity_rad_s;
+    return foc::internal::set_command(command);
 }
 
 /**
@@ -440,7 +441,7 @@ static foc_result start_open_loop_stage(foc_commissioning_stage stage,
         0.0f);
     if(result != foc_result::OK){return result;}
 
-    result = foc_core::enable();
+    result = foc::enable();
     if(result != foc_result::OK){return result;}
 
     open_loop_stage_start_mechanical_angle_rad =
@@ -588,7 +589,7 @@ static void finish_open_loop_forward(const foc_snapshot &snapshot,
         foc_math::normalize_angle(
             open_loop_stage_start_electrical_angle_rad +
             calculate_open_loop_rotation_rad(OPEN_LOOP_RUN_TIME_MS));
-    foc_core::disable();
+    foc::disable();
     enter_commissioning_stage(
         foc_commissioning_stage::OPEN_LOOP_PAUSE,
         timestamp_ms);
@@ -613,7 +614,7 @@ static void finish_open_loop_reverse(const foc_snapshot &snapshot)
         fabsf(reverse_delta) >= OPEN_LOOP_MINIMUM_MECHANICAL_MOVE_RAD &&
         forward_delta * reverse_delta < 0.0f;
 
-    foc_core::disable();
+    foc::disable();
     commissioning_status.stage = commissioning_status.open_loop_motion_detected ?
         foc_commissioning_stage::COMPLETE :
         foc_commissioning_stage::FAILED;
@@ -635,12 +636,13 @@ static foc_result set_current_target(uint32_t timestamp_ms,
     float d_axis_current_a,
     float q_axis_current_a)
 {
-    foc_target target{};
-    target.timestamp_ms = timestamp_ms;
-    target.mode = foc_control_mode::CURRENT;
-    target.d_axis_current_a = d_axis_current_a;
-    target.q_axis_current_a = q_axis_current_a;
-    return foc_core::set_target(target);
+    foc_command command{};
+    command.timestamp_ms = timestamp_ms;
+    command.electrical_angle_timestamp_us = sys_time::get_us_tick();
+    command.target.mode = foc_control_mode::CURRENT;
+    command.target.d_axis_current_a = d_axis_current_a;
+    command.target.q_axis_current_a = q_axis_current_a;
+    return foc::internal::set_command(command);
 }
 
 /**
@@ -660,7 +662,7 @@ static foc_result start_alignment_stage(foc_commissioning_stage stage,
         electrical_angle_rad);
     if(result != foc_result::OK){return result;}
 
-    result = foc_core::enable();
+    result = foc::enable();
     if(result != foc_result::OK){return result;}
 
     enter_commissioning_stage(stage, timestamp_ms);
@@ -748,7 +750,7 @@ static void finish_third_phase_vector(const foc_snapshot &snapshot,
         return;
     }
 
-    foc_core::disable();
+    foc::disable();
     commissioning_status.phase_vector_check_passed =
         phase_vector_results_valid();
     if(!commissioning_status.phase_vector_check_passed)
@@ -803,7 +805,7 @@ static void finish_current_polarity_verification(uint32_t timestamp_ms)
         return;
     }
 
-    foc_core::disable();
+    foc::disable();
     foc_result start_result = start_alignment_stage(
         foc_commissioning_stage::ALIGN_SECOND,
         timestamp_ms,
@@ -823,7 +825,7 @@ static void finish_current_polarity_verification(uint32_t timestamp_ms)
 static void finish_second_alignment(const foc_snapshot &snapshot,
     uint32_t timestamp_ms)
 {
-    foc_core::disable();
+    foc::disable();
     commissioning_status.second_mechanical_angle_rad =
         snapshot.rotor.full_angle_rad;
     float movement = commissioning_status.second_mechanical_angle_rad -
@@ -843,7 +845,7 @@ static void finish_second_alignment(const foc_snapshot &snapshot,
             (float)commissioning_status.rotor_direction *
             (float)MOTOR_POLE_PAIRS);
 
-    foc_result alignment_result = foc_core::set_rotor_alignment(
+    foc_result alignment_result = foc::internal::set_rotor_alignment(
         commissioning_status.rotor_direction,
         commissioning_status.electrical_zero_offset_rad);
     if(alignment_result != foc_result::OK)
@@ -861,7 +863,7 @@ static void finish_second_alignment(const foc_snapshot &snapshot,
         return;
     }
 
-    foc_result enable_result = foc_core::enable();
+    foc_result enable_result = foc::enable();
     if(enable_result != foc_result::OK)
     {
         fail_commissioning(enable_result);
@@ -919,7 +921,7 @@ static void finish_d_axis_verification(uint32_t timestamp_ms)
  */
 static void finish_q_axis_verification()
 {
-    foc_core::disable();
+    foc::disable();
     commissioning_status.stage = foc_commissioning_stage::COMPLETE;
     commissioning_status.result = foc_result::OK;
     publish_commissioning_status();
@@ -1179,7 +1181,7 @@ static void foc_sensor_task_entry(void *argument)
     while(true)
     {
         TickType_t update_start_tick = xTaskGetTickCount();
-        foc_result result = foc_core::update_sensors();
+        foc_result result = foc::internal::update_sensors();
         TickType_t update_elapsed_ticks =
             xTaskGetTickCount() - update_start_tick;
 
@@ -1207,7 +1209,7 @@ static void foc_safety_task_entry(void *argument)
 {
     vTaskDelay(pdMS_TO_TICKS(CURRENT_SENSOR_SETTLE_TIME_MS));
     foc_result calibration_result =
-        foc_core::calibrate_current_task(
+        foc::internal::calibrate_current_task(
             CURRENT_CALIBRATION_SAMPLE_COUNT);
     if(calibration_result != foc_result::OK &&
         calibration_result != foc_result::CALIBRATING)
@@ -1228,7 +1230,7 @@ static void foc_safety_task_entry(void *argument)
                 foc_commissioning_stage::FAILED)
         {
             foc_result calibration_result =
-                foc_core::calibrate_current_task(
+                foc::internal::calibrate_current_task(
                     CURRENT_CALIBRATION_SAMPLE_COUNT);
             if(calibration_result == foc_result::OK)
             {
@@ -1243,11 +1245,11 @@ static void foc_safety_task_entry(void *argument)
         uint32_t timestamp_ms = sys_time::get_ms_tick();
         update_bus_voltage_status();
         foc_snapshot snapshot{};
-        bool snapshot_available = foc_core::peek_snapshot(snapshot);
+        bool snapshot_available = foc::peek_snapshot(snapshot);
         update_commissioning(snapshot,
             snapshot_available,
             timestamp_ms);
-        foc_core::update_safety(timestamp_ms);
+        foc::internal::update_safety(timestamp_ms);
 
         vTaskDelayUntil(&last_wake_time,
             pdMS_TO_TICKS(FOC_SAFETY_UPDATE_PERIOD_MS));
@@ -1268,10 +1270,13 @@ void foc_dev::init()
     commissioning_status.result = foc_result::NOT_READY;
     publish_commissioning_status();
 
-    if(foc_core::link_rotor_sensor(rotor) != foc_result::OK ||
-        foc_core::link_current_sensor(phase_current) != foc_result::OK ||
-        foc_core::link_phase_driver(phase_output) != foc_result::OK ||
-        foc_core::init(make_control_config()) != foc_result::OK)
+    foc_hardware hardware{
+        &rotor,
+        &phase_current,
+        &phase_output
+    };
+    if(foc::internal::bind_hardware(hardware) != foc_result::OK ||
+        foc::init(make_control_config()) != foc_result::OK)
     {
         Error_Handler();
     }
@@ -1331,6 +1336,6 @@ extern "C" void HAL_ADCEx_InjectedConvCpltCallback(
 {
     if(adc && adc->Instance == ADC1)
     {
-        foc_core::run_control_from_isr(sys_time::get_us_tick());
+        foc::internal::run_control_from_isr(sys_time::get_us_tick());
     }
 }
