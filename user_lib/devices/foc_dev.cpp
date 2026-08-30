@@ -8,11 +8,6 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-extern "C"
-{
-#include "third-parts/SguanFOC/SguanFOC.h"
-}
-
 static constexpr uint8_t AS5600_I2C_BUS_ID = 0;
 static constexpr uint8_t AS5600_I2C_ADDRESS = 0x36;
 static constexpr uint16_t FOC_SENSOR_TASK_STACK_DEPTH = 512;
@@ -29,6 +24,7 @@ static constexpr float BUS_VOLTAGE_DIVIDER_RATIO = 11.0f;
 static as5600_rotor_sensor rotor(AS5600_I2C_BUS_ID,
     AS5600_I2C_ADDRESS);
 static volatile bool rotor_ready = false;
+static SguanFOCWrapper motor;
 
 extern "C"
 {
@@ -157,12 +153,22 @@ static void sguan_task_entry(void *argument)
 
     while(true)
     {
-        SguanFOC_main_Loop();
-        SguanFOC_Low_Loop();
+        motor.service_loop();
+        motor.low_freq_loop();
 
         vTaskDelayUntil(&last_wake_time,
             pdMS_TO_TICKS(SGUAN_UPDATE_PERIOD_MS));
     }
+}
+
+/**
+ * @brief 获取板级使用的 SguanFOC wrapper
+ *
+ * @return 板级唯一的 SguanFOC wrapper 实例
+ */
+SguanFOCWrapper &foc_dev::controller()
+{
+    return motor;
 }
 
 /**
@@ -176,8 +182,11 @@ void foc_dev::init()
         Error_Handler();
     }
 
-    // SguanFOC 全局对象复位后处于 STANDBY，需要显式进入初始化状态。
-    Sguan.status = MOTOR_STATUS_UNINITIALIZED;
+    SguanFOCConfig config = SguanFOCWrapper::default_config();
+    if(!motor.init(config))
+    {
+        Error_Handler();
+    }
 
     BaseType_t sensor_task_result = xTaskCreate(foc_sensor_task_entry,
         "foc_sensor",
@@ -216,6 +225,6 @@ extern "C" void HAL_ADCEx_InjectedConvCpltCallback(
 {
     if(adc && adc->Instance == ADC2)
     {
-        SguanFOC_High_Loop();
+        motor.high_freq_loop();
     }
 }

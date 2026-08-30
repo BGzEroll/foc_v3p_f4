@@ -1,16 +1,12 @@
 #include "sensor_debug.h"
 
 #include "drivers/bus/uart_bus.h"
+#include "devices/foc_dev.h"
 #include "devices/mpu6050_dev.h"
 #include "main.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include <stdio.h>
-
-extern "C"
-{
-#include "third-parts/SguanFOC/SguanFOC.h"
-}
 
 static constexpr uint8_t DEBUG_UART_BUS_ID = 0;
 static constexpr uint16_t SENSOR_DEBUG_TASK_STACK_DEPTH = 512;
@@ -121,13 +117,15 @@ static uart_result send_mpu6050_sample(const mpu6050_sample &sample)
  */
 static uart_result send_sguan_status()
 {
+    const SguanFOCSnapshot state = foc_dev::controller().snapshot();
     int32_t angle = round_to_int32(
-        Sguan.encoder.Real_Rad * RADIAN_TO_CENTIDEGREE);
-    int32_t speed = round_to_int32(Sguan.encoder.Real_Speed * 1000.0f);
-    int32_t current_d = round_to_int32(Sguan.current.Real_Id * 1000.0f);
-    int32_t current_q = round_to_int32(Sguan.current.Real_Iq * 1000.0f);
-    int32_t target_q = round_to_int32(Sguan.foc.Target_Iq * 1000.0f);
-    int32_t voltage_q = round_to_int32(Sguan.foc.Uq_in * 1000.0f);
+        state.mechanical_angle_rad * RADIAN_TO_CENTIDEGREE);
+    int32_t speed = round_to_int32(
+        state.mechanical_velocity_rad_s * 1000.0f);
+    int32_t current_d = round_to_int32(state.id_a * 1000.0f);
+    int32_t current_q = round_to_int32(state.iq_a * 1000.0f);
+    int32_t target_q = round_to_int32(state.target_iq_a * 1000.0f);
+    int32_t voltage_q = round_to_int32(state.uq_v * 1000.0f);
 
     char message[UART_MESSAGE_BUFFER_SIZE]{};
     int message_length = snprintf(message,
@@ -135,17 +133,17 @@ static uart_result send_sguan_status()
         "SGUAN status=%u mode=%u angle_mdeg=%ld speed_mrads=%ld "
         "id_ma=%ld iq_ma=%ld target_iq_ma=%ld uq_mv=%ld "
         "duty=%u,%u,%u\r\n",
-        (unsigned int)Sguan.status,
-        (unsigned int)Sguan.mode,
+        (unsigned int)state.raw_status,
+        (unsigned int)state.mode,
         (long)angle,
         (long)speed,
         (long)current_d,
         (long)current_q,
         (long)target_q,
         (long)voltage_q,
-        (unsigned int)Sguan.foc.Duty_u,
-        (unsigned int)Sguan.foc.Duty_v,
-        (unsigned int)Sguan.foc.Duty_w);
+        (unsigned int)state.duty_u,
+        (unsigned int)state.duty_v,
+        (unsigned int)state.duty_w);
 
     if(message_length < 0 || (uint32_t)message_length >= sizeof(message))
     {

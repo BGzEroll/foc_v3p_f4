@@ -1,6 +1,7 @@
 #ifndef __USERDATA_PARAMETER_H
 #define __USERDATA_PARAMETER_H
 #include "SguanFOC.h"
+#include "wrapper/sguan_foc_bridge.h"
 /* 电机控制User用户设置·BPF和PID和PLL运行参数 */
 
 static inline void User_ParameterSet(void){
@@ -57,6 +58,9 @@ static inline void User_ParameterSet(void){
     // 3.pll锁相环跟踪系统
     Sguan.encoder.pll.Kp = 650.0f;                  // 锁相环比例项增益
     Sguan.encoder.pll.Ki = 210000.0f;               // 锁相环积分项增益
+
+    // wrapper 配置在第三方默认值之后覆盖，保证最终只由一套配置生效。
+    sguan_foc_wrapper_apply_config();
 }
 
 

@@ -1,6 +1,7 @@
 #ifndef __USERDATA_USERCONTROL_H
 #define __USERDATA_USERCONTROL_H
 #include "SguanFOC.h"
+#include "wrapper/sguan_foc_bridge.h"
 /* 电机控制User用户设置·实时参数控制页面 */
 
 /* 用户自己的CODE BEGIN Includes */
@@ -8,9 +9,8 @@
 /* 用户自己的CODE END Includes */
 
 static inline void User_UserControl(void){
-    // 先用小幅 Q 轴电流验证采样极性和电流闭环，后续再接入外部指令。
-    Sguan.foc.Target_Id = 0.0f;
-    Sguan.foc.Target_Iq = 0.10f;
+    // 每个高速周期从 wrapper command 读取目标，避免固定值覆盖外部指令。
+    sguan_foc_wrapper_apply_command();
 }
 
 static inline void User_AO_Adjust(float AO){
