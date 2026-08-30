@@ -5,6 +5,8 @@
 static constexpr uint8_t AS5600_RAW_ANGLE_REGISTER = 0x0CU;
 static constexpr uint16_t AS5600_RESOLUTION_COUNTS = 4096U;
 static constexpr int16_t AS5600_HALF_RESOLUTION_COUNTS = 2048;
+static constexpr uint32_t AS5600_I2C_LOCK_TIMEOUT_MS = 2U;
+static constexpr uint32_t AS5600_I2C_TRANSFER_TIMEOUT_MS = 2U;
 static constexpr float TWO_PI = 6.28318530717958647692f;
 static constexpr float COUNT_TO_RADIAN =
     TWO_PI / (float)AS5600_RESOLUTION_COUNTS;
@@ -120,10 +122,12 @@ uint32_t as5600_rotor_sensor::communication_error_count() const
 foc_result as5600_rotor_sensor::read_and_publish_sample()
 {
     uint8_t raw_data[2]{};
-    i2c_result read_result = i2c.read_bytes(device_address,
+    i2c_result read_result = i2c.read_bytes_blocking(device_address,
         AS5600_RAW_ANGLE_REGISTER,
         raw_data,
-        sizeof(raw_data));
+        sizeof(raw_data),
+        AS5600_I2C_LOCK_TIMEOUT_MS,
+        AS5600_I2C_TRANSFER_TIMEOUT_MS);
     if(read_result != i2c_result::OK)
     {
         error_count++;

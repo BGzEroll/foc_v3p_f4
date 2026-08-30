@@ -49,6 +49,9 @@ struct foc_context
     bool initialized = false;
     bool fault_current_valid = false;
     volatile bool calibration_output_active = false;
+    volatile uint8_t output_fault_stage = 0U;
+    volatile uint8_t output_fault_result = 0U;
+    phase_duty output_fault_duty{};
 };
 
 static foc_context core_context;
@@ -550,6 +553,10 @@ foc_result foc_core::run_open_loop_from_task(uint32_t timestamp_us)
         core_context.config.bus_voltage_v,
         duty))
     {
+        core_context.output_fault_stage = 1U;
+        core_context.output_fault_result =
+            (uint8_t)foc_result::OUTPUT_FAULT;
+        core_context.output_fault_duty = duty;
         latch_fault(foc_fault_mask(foc_fault::OUTPUT_RANGE));
         return foc_result::OUTPUT_FAULT;
     }
@@ -558,6 +565,9 @@ foc_result foc_core::run_open_loop_from_task(uint32_t timestamp_us)
         core_context.driver->write_duty_from_isr(duty);
     if(output_result != foc_result::OK)
     {
+        core_context.output_fault_stage = 2U;
+        core_context.output_fault_result = (uint8_t)output_result;
+        core_context.output_fault_duty = duty;
         latch_fault(foc_fault_mask(foc_fault::OUTPUT_RANGE));
         return output_result;
     }
@@ -954,6 +964,9 @@ foc_result foc_core::update_safety(uint32_t timestamp_ms)
     snapshot.d_axis_voltage_v = telemetry.d_axis_voltage_v;
     snapshot.q_axis_voltage_v = telemetry.q_axis_voltage_v;
     snapshot.duty = telemetry.duty;
+    snapshot.output_fault_stage = core_context.output_fault_stage;
+    snapshot.output_fault_result = core_context.output_fault_result;
+    snapshot.output_fault_duty = core_context.output_fault_duty;
     snapshot.control_sequence = core_context.control_sequence;
     snapshot.bus_update_error_count =
         core_context.bus_update_error_count;

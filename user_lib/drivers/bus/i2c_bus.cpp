@@ -13,7 +13,9 @@ enum class i2c_transfer_direction : uint8_t
 };
 
 static constexpr uint8_t I2C_TRANSFER_ATTEMPT_COUNT = 2U;
+static constexpr uint8_t I2C_RECOVERY_CLOCK_PULSES = 9U;
 static constexpr uint32_t I2C_RECOVERY_DELAY_US = 5U;
+static constexpr uint32_t I2C_RECOVERY_FORCE_DELAY_US = 20U;
 
 // 管理一条物理 I2C 总线的互斥访问、DMA 状态、完成同步和自动恢复。
 class i2c_dev
@@ -24,6 +26,12 @@ class i2c_dev
     public:
         i2c_result init();
         i2c_result read_bytes(uint8_t device_address,
+            uint8_t register_address,
+            uint8_t *data,
+            uint16_t size,
+            uint32_t lock_timeout_ms,
+            uint32_t transfer_timeout_ms);
+        i2c_result read_bytes_blocking(uint8_t device_address,
             uint8_t register_address,
             uint8_t *data,
             uint16_t size,
@@ -45,7 +53,8 @@ class i2c_dev
             uint8_t *data,
             uint16_t size,
             uint32_t lock_timeout_ms,
-            uint32_t transfer_timeout_ms);
+            uint32_t transfer_timeout_ms,
+            bool use_dma);
         bool recover_bus();
         void cancel_active_transfer();
 
@@ -221,6 +230,86 @@ static bool get_i2c_gpio_config(I2C_HandleTypeDef *target_handle,
 }
 
 /**
+ * @brief 通过 APB 外设复位清除 STM32 I2C 外设内部状态机
+ *
+ * @param target_handle 待复位的 I2C 外设句柄
+ *
+ * @return 找到对应外设并完成复位时返回 true
+ */
+static bool reset_i2c_peripheral(I2C_HandleTypeDef *target_handle)
+{
+    if(!target_handle || !target_handle->Instance)
+    {
+        return false;
+    }
+
+    if(target_handle->Instance == I2C1)
+    {
+        __HAL_RCC_I2C1_FORCE_RESET();
+        __DSB();
+        sys_time::delay_us(I2C_RECOVERY_DELAY_US);
+        __HAL_RCC_I2C1_RELEASE_RESET();
+        __DSB();
+        return true;
+    }
+
+    if(target_handle->Instance == I2C2)
+    {
+        __HAL_RCC_I2C2_FORCE_RESET();
+        __DSB();
+        sys_time::delay_us(I2C_RECOVERY_DELAY_US);
+        __HAL_RCC_I2C2_RELEASE_RESET();
+        __DSB();
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * @brief 判断 I2C 时钟线和数据线是否都已释放
+ *
+ * @param target_handle I2C 外设句柄
+ *
+ * @return 两条线路均为高电平时返回 true
+ */
+static bool i2c_lines_released(I2C_HandleTypeDef *target_handle)
+{
+    GPIO_TypeDef *gpio_port = nullptr;
+    uint16_t scl_pin = 0U;
+    uint16_t sda_pin = 0U;
+
+    if(!get_i2c_gpio_config(target_handle,
+        gpio_port,
+        scl_pin,
+        sda_pin))
+    {
+        return false;
+    }
+
+    return HAL_GPIO_ReadPin(gpio_port, scl_pin) == GPIO_PIN_SET &&
+           HAL_GPIO_ReadPin(gpio_port, sda_pin) == GPIO_PIN_SET;
+}
+
+/**
+ * @brief 判断 I2C 外设是否仍处于忙状态
+ *
+ * @param target_handle I2C 外设句柄
+ *
+ * @return HAL 状态或硬件 BUSY 标志未释放时返回 true
+ */
+static bool i2c_peripheral_busy(I2C_HandleTypeDef *target_handle)
+{
+    if(!target_handle || !target_handle->Instance)
+    {
+        return true;
+    }
+
+    return HAL_I2C_GetState(target_handle) != HAL_I2C_STATE_READY ||
+           (target_handle->Instance->SR2 & I2C_SR2_BUSY) != 0U;
+}
+
+/**
  * @brief 创建物理 I2C 总线管理对象
  *
  * @param handle HAL I2C 句柄
@@ -293,7 +382,41 @@ i2c_result i2c_dev::read_bytes(uint8_t device_address,
         data,
         size,
         lock_timeout_ms,
-        transfer_timeout_ms);
+        transfer_timeout_ms,
+        true);
+}
+
+/**
+ * @brief 使用阻塞 HAL 读取 I2C 设备寄存器
+ *
+ * 该路径供 FOC 转子传感器使用。HAL DMA 的内存读取请求内部使用固定的
+ * 35 ms 标志等待，异常时可能超过转子硬超时；阻塞路径使用调用方提供的
+ * 短超时，并仍复用同一套线路检查和自动恢复。
+ *
+ * @param device_address 7 位设备地址
+ * @param register_address 起始寄存器地址
+ * @param data 接收缓冲区
+ * @param size 接收长度
+ * @param lock_timeout_ms 等待总线互斥锁的超时时间，单位毫秒
+ * @param transfer_timeout_ms HAL 传输超时时间，单位毫秒
+ *
+ * @return I2C 总线结果
+ */
+i2c_result i2c_dev::read_bytes_blocking(uint8_t device_address,
+    uint8_t register_address,
+    uint8_t *data,
+    uint16_t size,
+    uint32_t lock_timeout_ms,
+    uint32_t transfer_timeout_ms)
+{
+    return transfer_bytes(i2c_transfer_direction::READ,
+        device_address,
+        register_address,
+        data,
+        size,
+        lock_timeout_ms,
+        transfer_timeout_ms,
+        false);
 }
 
 /**
@@ -321,7 +444,8 @@ i2c_result i2c_dev::write_bytes(uint8_t device_address,
         const_cast<uint8_t *>(data),
         size,
         lock_timeout_ms,
-        transfer_timeout_ms);
+        transfer_timeout_ms,
+        true);
 }
 
 /**
@@ -337,15 +461,16 @@ bool i2c_dev::matches_handle(I2C_HandleTypeDef *target_handle) const
 }
 
 /**
- * @brief 执行受互斥锁保护且支持自动恢复重试的 I2C DMA 传输
+ * @brief 执行受互斥锁保护且支持自动恢复重试的 I2C 传输
  *
- * @param direction DMA 传输方向
+ * @param direction 传输方向
  * @param device_address 7 位设备地址
  * @param register_address 起始寄存器地址
  * @param data 数据缓冲区
  * @param size 数据长度
  * @param lock_timeout_ms 等待总线互斥锁的超时时间，单位毫秒
- * @param transfer_timeout_ms 等待 DMA 完成的超时时间，单位毫秒
+ * @param transfer_timeout_ms 传输超时时间，单位毫秒
+ * @param use_dma 是否使用 DMA 传输
  *
  * @return I2C 总线结果
  */
@@ -355,13 +480,9 @@ i2c_result i2c_dev::transfer_bytes(i2c_transfer_direction direction,
     uint8_t *data,
     uint16_t size,
     uint32_t lock_timeout_ms,
-    uint32_t transfer_timeout_ms)
+    uint32_t transfer_timeout_ms,
+    bool use_dma)
 {
-    if(!initialized)
-    {
-        return i2c_result::NOT_INITIALIZED;
-    }
-
     if(device_address > 0x7FU || !data || size == 0U)
     {
         return i2c_result::INVALID_ARGUMENT;
@@ -370,6 +491,16 @@ i2c_result i2c_dev::transfer_bytes(i2c_transfer_direction direction,
         xTaskGetSchedulerState() != taskSCHEDULER_RUNNING)
     {
         return i2c_result::INVALID_CONTEXT;
+    }
+
+    // 恢复失败后允许后续任务重新初始化 HAL 和 DMA，避免永久停留在未初始化状态。
+    if(!initialized)
+    {
+        const i2c_result init_result = init();
+        if(init_result != i2c_result::OK)
+        {
+            return init_result;
+        }
     }
 
     TickType_t lock_timeout = milliseconds_to_ticks(lock_timeout_ms);
@@ -392,48 +523,83 @@ i2c_result i2c_dev::transfer_bytes(i2c_transfer_direction direction,
         {
         }
 
-        transfer_result = i2c_result::BUSY;
-        transfer_active = true;
+        // HAL 在总线被拉低或外设状态残留时可能先等待 25~35 ms；先恢复，避免超过 FOC 转子超时。
+        if((!i2c_lines_released(handle) || i2c_peripheral_busy(handle)) &&
+            !recover_bus())
+        {
+            result = i2c_result::RECOVERY_FAILED;
+            break;
+        }
+
+        if(!i2c_lines_released(handle) || i2c_peripheral_busy(handle))
+        {
+            result = i2c_result::RECOVERY_FAILED;
+            break;
+        }
+
         HAL_StatusTypeDef hal_status;
 
-        if(direction == i2c_transfer_direction::READ)
+        if(!use_dma)
         {
-            hal_status = HAL_I2C_Mem_Read_DMA(handle,
+            transfer_active = false;
+            hal_status = HAL_I2C_Mem_Read(handle,
                 hal_device_address,
                 register_address,
                 I2C_MEMADD_SIZE_8BIT,
                 data,
-                size);
-        }
-        else
-        {
-            hal_status = HAL_I2C_Mem_Write_DMA(handle,
-                hal_device_address,
-                register_address,
-                I2C_MEMADD_SIZE_8BIT,
-                data,
-                size);
-        }
-
-        if(hal_status != HAL_OK)
-        {
+                size,
+                transfer_timeout_ms);
             result = map_hal_status(handle, hal_status);
-            cancel_active_transfer();
         }
         else
         {
-            TickType_t transfer_timeout =
-                milliseconds_to_ticks(transfer_timeout_ms);
-            if(xSemaphoreTake(completion_semaphore,
-                transfer_timeout) != pdTRUE)
+            transfer_result = i2c_result::BUSY;
+            transfer_active = true;
+
+            if(direction == i2c_transfer_direction::READ)
             {
-                result = i2c_result::TRANSFER_TIMEOUT;
+                hal_status = HAL_I2C_Mem_Read_DMA(handle,
+                    hal_device_address,
+                    register_address,
+                    I2C_MEMADD_SIZE_8BIT,
+                    data,
+                    size);
+            }
+            else
+            {
+                hal_status = HAL_I2C_Mem_Write_DMA(handle,
+                    hal_device_address,
+                    register_address,
+                    I2C_MEMADD_SIZE_8BIT,
+                    data,
+                    size);
+            }
+
+            if(hal_status != HAL_OK)
+            {
+                result = map_hal_status(handle, hal_status);
                 cancel_active_transfer();
             }
             else
             {
-                result = transfer_result;
+                TickType_t transfer_timeout =
+                    milliseconds_to_ticks(transfer_timeout_ms);
+                if(xSemaphoreTake(completion_semaphore,
+                    transfer_timeout) != pdTRUE)
+                {
+                    result = i2c_result::TRANSFER_TIMEOUT;
+                    cancel_active_transfer();
+                }
+                else
+                {
+                    result = transfer_result;
+                }
             }
+        }
+
+        if(!use_dma && hal_status != HAL_OK)
+        {
+            cancel_active_transfer();
         }
 
         if(result == i2c_result::OK)
@@ -484,19 +650,35 @@ bool i2c_dev::recover_bus()
 
     GPIO_InitTypeDef gpio_init = {0};
     gpio_init.Pin = scl_pin | sda_pin;
-    gpio_init.Mode = GPIO_MODE_OUTPUT_OD;
+    gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
     gpio_init.Pull = GPIO_NOPULL;
     gpio_init.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    HAL_GPIO_WritePin(gpio_port,
+        scl_pin | sda_pin,
+        GPIO_PIN_RESET);
     HAL_GPIO_Init(gpio_port, &gpio_init);
 
-    // 释放总线；若 SDA 被从设备拉低，则发送最多 9 个时钟脉冲。
+    // 先用推挽输出强制制造一次低电平和 STOP，清除从设备残留的半帧状态。
+    HAL_GPIO_WritePin(gpio_port,
+        scl_pin | sda_pin,
+        GPIO_PIN_RESET);
+    sys_time::delay_us(I2C_RECOVERY_FORCE_DELAY_US);
+    HAL_GPIO_WritePin(gpio_port, scl_pin, GPIO_PIN_SET);
+    sys_time::delay_us(I2C_RECOVERY_FORCE_DELAY_US);
+    HAL_GPIO_WritePin(gpio_port, sda_pin, GPIO_PIN_SET);
+    sys_time::delay_us(I2C_RECOVERY_FORCE_DELAY_US);
+
+    // 切回开漏释放模式；若 SDA 被从设备拉低，则发送最多 9 个时钟脉冲。
+    gpio_init.Mode = GPIO_MODE_OUTPUT_OD;
+    HAL_GPIO_Init(gpio_port, &gpio_init);
     HAL_GPIO_WritePin(gpio_port,
         scl_pin | sda_pin,
         GPIO_PIN_SET);
     sys_time::delay_us(I2C_RECOVERY_DELAY_US);
-    for(uint8_t pulse = 0U; pulse < 9U; pulse++)
+    for(uint8_t pulse = 0U; pulse < I2C_RECOVERY_CLOCK_PULSES; pulse++)
     {
-        if(HAL_GPIO_ReadPin(gpio_port, sda_pin) == GPIO_PIN_SET)
+        if(HAL_GPIO_ReadPin(gpio_port, scl_pin) == GPIO_PIN_SET &&
+           HAL_GPIO_ReadPin(gpio_port, sda_pin) == GPIO_PIN_SET)
         {
             break;
         }
@@ -521,8 +703,10 @@ bool i2c_dev::recover_bus()
         HAL_GPIO_ReadPin(gpio_port, sda_pin) == GPIO_PIN_SET;
     HAL_GPIO_DeInit(gpio_port, scl_pin | sda_pin);
 
-    bool i2c_initialized = HAL_I2C_Init(handle) == HAL_OK;
-    bool recovered = lines_released && i2c_initialized;
+    bool peripheral_reset = reset_i2c_peripheral(handle);
+    bool i2c_initialized = peripheral_reset && HAL_I2C_Init(handle) == HAL_OK;
+    bool recovered = lines_released && i2c_initialized &&
+        i2c_lines_released(handle) && !i2c_peripheral_busy(handle);
 
     if(completion_semaphore)
     {
@@ -625,6 +809,39 @@ i2c_result i2c_bus::read_bytes(uint8_t device_address,
     }
 
     return device->read_bytes(device_address,
+        register_address,
+        data,
+        size,
+        lock_timeout_ms,
+        transfer_timeout_ms);
+}
+
+/**
+ * @brief 使用短超时的阻塞方式读取 I2C 设备寄存器
+ *
+ * @param device_address 7 位设备地址
+ * @param register_address 起始寄存器地址
+ * @param data 接收缓冲区
+ * @param size 接收长度
+ * @param lock_timeout_ms 等待总线互斥锁的超时时间，单位毫秒
+ * @param transfer_timeout_ms HAL 传输超时时间，单位毫秒
+ *
+ * @return I2C 总线结果
+ */
+i2c_result i2c_bus::read_bytes_blocking(uint8_t device_address,
+    uint8_t register_address,
+    uint8_t *data,
+    uint16_t size,
+    uint32_t lock_timeout_ms,
+    uint32_t transfer_timeout_ms)
+{
+    i2c_dev *device = get_dev(bus_id);
+    if(!device)
+    {
+        return i2c_result::INVALID_BUS;
+    }
+
+    return device->read_bytes_blocking(device_address,
         register_address,
         data,
         size,

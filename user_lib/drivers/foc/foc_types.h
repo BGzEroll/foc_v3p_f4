@@ -147,6 +147,9 @@ struct foc_snapshot
     float d_axis_voltage_v = 0.0f;
     float q_axis_voltage_v = 0.0f;
     phase_duty duty{};
+    uint8_t output_fault_stage = 0U;
+    uint8_t output_fault_result = 0U;
+    phase_duty output_fault_duty{};
     uint32_t control_sequence = 0U;
     uint32_t bus_update_error_count = 0U;
     uint32_t consecutive_bus_error_count = 0U;

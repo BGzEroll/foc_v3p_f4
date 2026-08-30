@@ -10,10 +10,10 @@
 #include <stdio.h>
 
 static constexpr uint8_t DEBUG_UART_BUS_ID = 0U;
-static constexpr uint16_t SENSOR_DEBUG_TASK_STACK_DEPTH = 512U;
+static constexpr uint16_t SENSOR_DEBUG_TASK_STACK_DEPTH = 1024U;
 static constexpr UBaseType_t SENSOR_DEBUG_TASK_PRIORITY = tskIDLE_PRIORITY + 2U;
 static constexpr uint32_t SENSOR_DEBUG_OUTPUT_PERIOD_MS = 100U;
-static constexpr uint16_t UART_MESSAGE_BUFFER_SIZE = 640U;
+static constexpr uint16_t UART_MESSAGE_BUFFER_SIZE = 768U;
 static constexpr float RADIAN_TO_CENTIDEGREE =
     18000.0f / 3.14159265358979323846f;
 static constexpr float RADIAN_PER_SECOND_TO_MILLIRADIAN_PER_SECOND = 1000.0f;
@@ -159,11 +159,25 @@ static uart_result send_foc_snapshot(const foc_snapshot &snapshot)
     int32_t current_a = round_to_int32(snapshot.current.current_a * 1000.0f);
     int32_t current_b = round_to_int32(snapshot.current.current_b * 1000.0f);
     int32_t current_c = round_to_int32(snapshot.current.current_c * 1000.0f);
+    int32_t target_d_axis_current = round_to_int32(
+        snapshot.target.d_axis_current_a * 1000.0f);
+    int32_t target_q_axis_current = round_to_int32(
+        snapshot.target.q_axis_current_a * 1000.0f);
+    int32_t d_axis_current = round_to_int32(
+        snapshot.d_axis_current_a * 1000.0f);
+    int32_t q_axis_current = round_to_int32(
+        snapshot.q_axis_current_a * 1000.0f);
     int32_t offset_a = round_to_int32(snapshot.current.offset_count_a * 100.0f);
     int32_t offset_b = round_to_int32(snapshot.current.offset_count_b * 100.0f);
     uint32_t current_a_magnitude = magnitude(current_a);
     uint32_t current_b_magnitude = magnitude(current_b);
     uint32_t current_c_magnitude = magnitude(current_c);
+    uint32_t target_d_axis_current_magnitude =
+        magnitude(target_d_axis_current);
+    uint32_t target_q_axis_current_magnitude =
+        magnitude(target_q_axis_current);
+    uint32_t d_axis_current_magnitude = magnitude(d_axis_current);
+    uint32_t q_axis_current_magnitude = magnitude(q_axis_current);
     uint32_t offset_a_magnitude = magnitude(offset_a);
     uint32_t offset_b_magnitude = magnitude(offset_b);
 
@@ -175,6 +189,9 @@ static uart_result send_foc_snapshot(const foc_snapshot &snapshot)
         "raw=%u rotor_seq=%lu timestamp_us=%lu age=%c%lu.%03lu ms "
         "current_valid=%u ia=%c%lu.%03lu ib=%c%lu.%03lu "
         "ic=%c%lu.%03lu A adc_a=%u adc_b=%u "
+        "target_id=%c%lu.%03lu target_iq=%c%lu.%03lu "
+        "measured_id=%c%lu.%03lu measured_iq=%c%lu.%03lu "
+        "output_stage=%u output_result=%u "
         "offset_a=%c%lu.%02lu offset_b=%c%lu.%02lu "
         "control_seq=%lu bus_error=%lu consecutive=%lu\r\n",
         foc_state_text(snapshot.state),
@@ -205,6 +222,20 @@ static uart_result send_foc_snapshot(const foc_snapshot &snapshot)
         (unsigned long)(current_c_magnitude % 1000U),
         (unsigned int)snapshot.current.raw_count_a,
         (unsigned int)snapshot.current.raw_count_b,
+        target_d_axis_current < 0 ? '-' : '+',
+        (unsigned long)(target_d_axis_current_magnitude / 1000U),
+        (unsigned long)(target_d_axis_current_magnitude % 1000U),
+        target_q_axis_current < 0 ? '-' : '+',
+        (unsigned long)(target_q_axis_current_magnitude / 1000U),
+        (unsigned long)(target_q_axis_current_magnitude % 1000U),
+        d_axis_current < 0 ? '-' : '+',
+        (unsigned long)(d_axis_current_magnitude / 1000U),
+        (unsigned long)(d_axis_current_magnitude % 1000U),
+        q_axis_current < 0 ? '-' : '+',
+        (unsigned long)(q_axis_current_magnitude / 1000U),
+        (unsigned long)(q_axis_current_magnitude % 1000U),
+        (unsigned int)snapshot.output_fault_stage,
+        (unsigned int)snapshot.output_fault_result,
         offset_a < 0 ? '-' : '+',
         (unsigned long)(offset_a_magnitude / 100U),
         (unsigned long)(offset_a_magnitude % 100U),
@@ -257,6 +288,12 @@ static uart_result send_foc_commissioning_status(
         status.open_loop_forward_delta_rad * 1000.0f);
     int32_t open_loop_reverse_delta = round_to_int32(
         status.open_loop_reverse_delta_rad * 1000.0f);
+    int32_t speed_loop_target = round_to_int32(
+        status.speed_loop_target_rad_s * 1000.0f);
+    int32_t speed_loop_feedback = round_to_int32(
+        status.speed_loop_feedback_rad_s * 1000.0f);
+    int32_t speed_loop_q_axis_target = round_to_int32(
+        status.speed_loop_q_axis_current_target_a * 1000.0f);
     int32_t vector_current_a[3]{};
     int32_t vector_current_b[3]{};
     int32_t vector_current_c[3]{};
@@ -285,7 +322,9 @@ static uart_result send_foc_commissioning_status(
         "measured_iq_ma=%ld open_loop_mv=%ld "
         "open_loop_mrads_milli=%ld open_loop_erads_milli=%ld "
         "forward_mrad=%ld "
-        "reverse_mrad=%ld motion=%u\r\n",
+        "reverse_mrad=%ld motion=%u speed_active=%u "
+        "speed_target_mrads=%ld speed_feedback_mrads=%ld "
+        "speed_iq_target_ma=%ld\r\n",
         (unsigned int)status.stage,
         (unsigned int)status.result,
         status.phase_vector_check_passed ? 1U : 0U,
@@ -316,7 +355,11 @@ static uart_result send_foc_commissioning_status(
         (long)open_loop_electrical_velocity,
         (long)open_loop_forward_delta,
         (long)open_loop_reverse_delta,
-        status.open_loop_motion_detected ? 1U : 0U);
+        status.open_loop_motion_detected ? 1U : 0U,
+        status.speed_loop_active ? 1U : 0U,
+        (long)speed_loop_target,
+        (long)speed_loop_feedback,
+        (long)speed_loop_q_axis_target);
 
     if(message_length < 0 || (uint32_t)message_length >= sizeof(message))
     {

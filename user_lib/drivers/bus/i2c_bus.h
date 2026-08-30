@@ -36,6 +36,12 @@ class i2c_bus
             uint16_t size,
             uint32_t lock_timeout_ms = DEFAULT_LOCK_TIMEOUT_MS,
             uint32_t transfer_timeout_ms = DEFAULT_TRANSFER_TIMEOUT_MS);
+        i2c_result read_bytes_blocking(uint8_t device_address,
+            uint8_t register_address,
+            uint8_t *data,
+            uint16_t size,
+            uint32_t lock_timeout_ms = DEFAULT_LOCK_TIMEOUT_MS,
+            uint32_t transfer_timeout_ms = DEFAULT_TRANSFER_TIMEOUT_MS);
         i2c_result write_bytes(uint8_t device_address,
             uint8_t register_address,
             const uint8_t *data,

@@ -49,6 +49,10 @@ struct foc_commissioning_status
     float open_loop_forward_delta_rad = 0.0f;
     float open_loop_reverse_delta_rad = 0.0f;
     bool open_loop_motion_detected = false;
+    bool speed_loop_active = false;
+    float speed_loop_target_rad_s = 0.0f;
+    float speed_loop_feedback_rad_s = 0.0f;
+    float speed_loop_q_axis_current_target_a = 0.0f;
 };
 
 namespace foc_dev

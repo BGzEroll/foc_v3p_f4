@@ -30,6 +30,22 @@ static constexpr uint32_t FOC_OPEN_LOOP_UPDATE_PERIOD_MS = 1U;
 static constexpr uint32_t FOC_SAFETY_UPDATE_PERIOD_MS = 10U;
 static constexpr bool FOC_OPEN_LOOP_CONTROL_FROM_TASK = false;
 static constexpr uint16_t FOC_CONTROL_ISR_DIVIDER = 2U;
+static constexpr float SPEED_LOOP_TARGET_RAD_S = 20.0f;
+static constexpr float SPEED_LOOP_CURRENT_FEEDFORWARD_A = 0.020f;
+static constexpr float SPEED_LOOP_PROPORTIONAL_GAIN_A_PER_RAD_S = 0.0005f;
+static constexpr float SPEED_LOOP_INTEGRAL_GAIN_A_PER_RAD_S2 = 0.0f;
+static constexpr float SPEED_LOOP_INTEGRAL_LIMIT_A = 0.0f;
+static constexpr float SPEED_LOOP_CURRENT_MINIMUM_A = 0.0f;
+static constexpr float SPEED_LOOP_MINIMUM_TORQUE_SPEED_MARGIN_RAD_S = 0.1f;
+static constexpr float SPEED_LOOP_CURRENT_LIMIT_A = 0.050f;
+static constexpr float SPEED_LOOP_STARTUP_KICK_CURRENT_A = 0.030f;
+static constexpr uint32_t SPEED_LOOP_STARTUP_KICK_TIME_MS = 500U;
+static constexpr float SPEED_LOOP_CURRENT_SLEW_RATE_A_PER_S = 0.5f;
+static constexpr float SPEED_LOOP_FEEDBACK_FILTER_ALPHA = 0.50f;
+static constexpr float SPEED_LOOP_CONTROL_PERIOD_S = 0.020f;
+static constexpr uint32_t SPEED_LOOP_VELOCITY_ESTIMATION_PERIOD_US = 20000U;
+static constexpr uint32_t SPEED_LOOP_TEST_TIME_MS = 8000U;
+static constexpr uint32_t SPEED_LOOP_STATUS_PERIOD_MS = 100U;
 static constexpr uint32_t CURRENT_SENSOR_SETTLE_TIME_MS = 500U;
 static constexpr uint32_t CURRENT_CALIBRATION_SAMPLE_COUNT = 4096U;
 static constexpr float ADC_REFERENCE_VOLTAGE_V = 3.3f;
@@ -123,6 +139,15 @@ static bool current_calibration_finished = false;
 static bool bus_voltage_sampling_started = false;
 static float open_loop_stage_start_mechanical_angle_rad = 0.0f;
 static float open_loop_stage_start_electrical_angle_rad = 0.0f;
+static bool speed_loop_active = false;
+static bool speed_loop_feedback_initialized = false;
+static uint32_t speed_loop_start_ms = 0U;
+static uint32_t speed_loop_previous_timestamp_us = 0U;
+static float speed_loop_previous_angle_rad = 0.0f;
+static float speed_loop_filtered_velocity_rad_s = 0.0f;
+static float speed_loop_integral_current_a = 0.0f;
+static float speed_loop_output_current_a = 0.0f;
+static uint32_t speed_loop_last_status_publish_ms = 0U;
 
 /**
  * @brief 启动母线电压 ADC 连续采样
@@ -589,6 +614,8 @@ static foc_result start_alignment_stage(foc_commissioning_stage stage,
     uint32_t timestamp_ms,
     float electrical_angle_rad);
 
+static foc_result start_speed_loop(uint32_t timestamp_ms);
+
 /**
  * @brief 完成正向开环验证并进入停机间隔
  *
@@ -670,6 +697,228 @@ static foc_result set_current_target(uint32_t timestamp_ms,
     target.d_axis_current_a = d_axis_current_a;
     target.q_axis_current_a = q_axis_current_a;
     return foc_core::set_target(target);
+}
+
+/**
+ * @brief 清零速度环的反馈和积分状态
+ */
+static void reset_speed_loop_state()
+{
+    speed_loop_active = false;
+    speed_loop_feedback_initialized = false;
+    speed_loop_start_ms = 0U;
+    speed_loop_previous_timestamp_us = 0U;
+    speed_loop_previous_angle_rad = 0.0f;
+    speed_loop_filtered_velocity_rad_s = 0.0f;
+    speed_loop_integral_current_a = 0.0f;
+    speed_loop_output_current_a = 0.0f;
+    speed_loop_last_status_publish_ms = 0U;
+    commissioning_status.speed_loop_active = false;
+    commissioning_status.speed_loop_target_rad_s =
+        SPEED_LOOP_TARGET_RAD_S;
+    commissioning_status.speed_loop_feedback_rad_s = 0.0f;
+    commissioning_status.speed_loop_q_axis_current_target_a = 0.0f;
+}
+
+/**
+ * @brief 在电流环上启动受限速度闭环测试
+ *
+ * @param timestamp_ms 速度环启动时间戳
+ *
+ * @return 速度闭环启动结果
+ */
+static foc_result start_speed_loop(uint32_t timestamp_ms)
+{
+    reset_speed_loop_state();
+
+    foc_result target_result = set_current_target(timestamp_ms,
+        0.0f,
+        0.0f);
+    if(target_result != foc_result::OK)
+    {
+        return target_result;
+    }
+
+    foc_result enable_result = foc_core::enable();
+    if(enable_result != foc_result::OK)
+    {
+        return enable_result;
+    }
+
+    speed_loop_start_ms = timestamp_ms;
+    speed_loop_active = true;
+    commissioning_status.speed_loop_active = true;
+    commissioning_status.speed_loop_target_rad_s =
+        SPEED_LOOP_TARGET_RAD_S;
+    return foc_result::OK;
+}
+
+/**
+ * @brief 根据 AS5600 机械速度计算速度环 Q 轴电流目标
+ *
+ * @param snapshot 最新 FOC 快照
+ * @param snapshot_available 是否存在有效快照
+ * @param timestamp_ms 当前时间戳
+ */
+static void update_speed_loop(const foc_snapshot &snapshot,
+    bool snapshot_available,
+    uint32_t timestamp_ms)
+{
+    if(!speed_loop_active)
+    {
+        return;
+    }
+
+    if(timestamp_ms - speed_loop_start_ms >= SPEED_LOOP_TEST_TIME_MS)
+    {
+        foc_core::disable();
+        reset_speed_loop_state();
+        publish_commissioning_status();
+        return;
+    }
+
+    if(snapshot_available && snapshot.state == foc_state::FAULT)
+    {
+        // 故障已经关闭功率级，禁止速度环继续给电流环发布目标。
+        reset_speed_loop_state();
+        publish_commissioning_status();
+        return;
+    }
+
+    if(!snapshot_available || !snapshot.rotor.valid)
+    {
+        return;
+    }
+
+    if(!speed_loop_feedback_initialized)
+    {
+        speed_loop_previous_timestamp_us = snapshot.rotor.timestamp_us;
+        speed_loop_previous_angle_rad = snapshot.rotor.full_angle_rad;
+        speed_loop_filtered_velocity_rad_s = 0.0f;
+        speed_loop_feedback_initialized = true;
+        return;
+    }
+
+    uint32_t elapsed_us = snapshot.rotor.timestamp_us -
+        speed_loop_previous_timestamp_us;
+    if(elapsed_us < SPEED_LOOP_VELOCITY_ESTIMATION_PERIOD_US)
+    {
+        return;
+    }
+
+    float angle_delta_rad = snapshot.rotor.full_angle_rad -
+        speed_loop_previous_angle_rad;
+    speed_loop_previous_timestamp_us = snapshot.rotor.timestamp_us;
+    speed_loop_previous_angle_rad = snapshot.rotor.full_angle_rad;
+    if(elapsed_us > 100000U)
+    {
+        return;
+    }
+
+    float raw_velocity_rad_s = angle_delta_rad * 1000000.0f /
+        (float)elapsed_us;
+    int8_t rotor_direction = commissioning_status.rotor_direction;
+    if(rotor_direction != 1 && rotor_direction != -1)
+    {
+        rotor_direction = 1;
+    }
+
+    float measured_velocity_rad_s = raw_velocity_rad_s *
+        (float)rotor_direction;
+    speed_loop_filtered_velocity_rad_s +=
+        SPEED_LOOP_FEEDBACK_FILTER_ALPHA *
+        (measured_velocity_rad_s - speed_loop_filtered_velocity_rad_s);
+    commissioning_status.speed_loop_feedback_rad_s =
+        speed_loop_filtered_velocity_rad_s;
+
+    float speed_error_rad_s = SPEED_LOOP_TARGET_RAD_S -
+        speed_loop_filtered_velocity_rad_s;
+    float integral_candidate_a = speed_loop_integral_current_a +
+        SPEED_LOOP_INTEGRAL_GAIN_A_PER_RAD_S2 *
+        speed_error_rad_s * SPEED_LOOP_CONTROL_PERIOD_S;
+    if(integral_candidate_a > SPEED_LOOP_INTEGRAL_LIMIT_A)
+    {
+        integral_candidate_a = SPEED_LOOP_INTEGRAL_LIMIT_A;
+    }
+    else if(integral_candidate_a < -SPEED_LOOP_INTEGRAL_LIMIT_A)
+    {
+        integral_candidate_a = -SPEED_LOOP_INTEGRAL_LIMIT_A;
+    }
+
+    float unsaturated_current_a = SPEED_LOOP_CURRENT_FEEDFORWARD_A +
+        SPEED_LOOP_PROPORTIONAL_GAIN_A_PER_RAD_S * speed_error_rad_s +
+        integral_candidate_a;
+    if(SPEED_LOOP_TARGET_RAD_S > 0.0f &&
+        speed_loop_filtered_velocity_rad_s <
+            SPEED_LOOP_TARGET_RAD_S +
+            SPEED_LOOP_MINIMUM_TORQUE_SPEED_MARGIN_RAD_S &&
+        unsaturated_current_a < SPEED_LOOP_CURRENT_MINIMUM_A)
+    {
+        unsaturated_current_a = SPEED_LOOP_CURRENT_MINIMUM_A;
+    }
+    float requested_current_a = unsaturated_current_a;
+    if(requested_current_a > SPEED_LOOP_CURRENT_LIMIT_A)
+    {
+        requested_current_a = SPEED_LOOP_CURRENT_LIMIT_A;
+    }
+    else if(requested_current_a < -SPEED_LOOP_CURRENT_LIMIT_A)
+    {
+        requested_current_a = -SPEED_LOOP_CURRENT_LIMIT_A;
+    }
+
+    if(timestamp_ms - speed_loop_start_ms <
+        SPEED_LOOP_STARTUP_KICK_TIME_MS)
+    {
+        requested_current_a = SPEED_LOOP_STARTUP_KICK_CURRENT_A;
+    }
+
+    float maximum_current_step_a =
+        SPEED_LOOP_CURRENT_SLEW_RATE_A_PER_S *
+        SPEED_LOOP_CONTROL_PERIOD_S;
+    float current_step_a = requested_current_a -
+        speed_loop_output_current_a;
+    if(current_step_a > maximum_current_step_a)
+    {
+        current_step_a = maximum_current_step_a;
+    }
+    else if(current_step_a < -maximum_current_step_a)
+    {
+        current_step_a = -maximum_current_step_a;
+    }
+    speed_loop_output_current_a += current_step_a;
+    float q_axis_current_a = speed_loop_output_current_a;
+
+    bool saturated_high = unsaturated_current_a >
+        SPEED_LOOP_CURRENT_LIMIT_A;
+    bool saturated_low = unsaturated_current_a <
+        -SPEED_LOOP_CURRENT_LIMIT_A;
+    bool drives_out_of_saturation =
+        (saturated_high && speed_error_rad_s < 0.0f) ||
+        (saturated_low && speed_error_rad_s > 0.0f);
+    if((!saturated_high && !saturated_low) || drives_out_of_saturation)
+    {
+        speed_loop_integral_current_a = integral_candidate_a;
+    }
+
+    commissioning_status.speed_loop_q_axis_current_target_a =
+        q_axis_current_a;
+
+    foc_result target_result = set_current_target(timestamp_ms,
+        0.0f,
+        q_axis_current_a);
+    if(target_result != foc_result::OK)
+    {
+        reset_speed_loop_state();
+        fail_commissioning(target_result);
+        return;
+    }
+
+    if(timestamp_ms - speed_loop_last_status_publish_ms >=
+        SPEED_LOOP_STATUS_PERIOD_MS)
+    {
+        publish_commissioning_status();
+        speed_loop_last_status_publish_ms = timestamp_ms;
+    }
 }
 
 /**
@@ -945,11 +1194,20 @@ static void finish_d_axis_verification(uint32_t timestamp_ms)
 }
 
 /**
- * @brief 结束受限 Q 轴测试并让功率级保持关闭
+ * @brief 结束受限 Q 轴测试并启动速度闭环
+ *
+ * @param timestamp_ms 速度闭环启动时间戳
  */
-static void finish_q_axis_verification()
+static void finish_q_axis_verification(uint32_t timestamp_ms)
 {
     foc_core::disable();
+    foc_result speed_loop_result = start_speed_loop(timestamp_ms);
+    if(speed_loop_result != foc_result::OK)
+    {
+        fail_commissioning(speed_loop_result);
+        return;
+    }
+
     commissioning_status.stage = foc_commissioning_stage::COMPLETE;
     commissioning_status.result = foc_result::OK;
     publish_commissioning_status();
@@ -1187,7 +1445,7 @@ static void update_commissioning(const foc_snapshot &snapshot,
             }
             if(stage_elapsed_ms >= Q_AXIS_VERIFY_TIME_MS)
             {
-                finish_q_axis_verification();
+                finish_q_axis_verification(timestamp_ms);
             }
             break;
 
@@ -1284,6 +1542,9 @@ static void foc_safety_task_entry(void *argument)
         foc_snapshot snapshot{};
         bool snapshot_available = foc_core::peek_snapshot(snapshot);
         update_commissioning(snapshot,
+            snapshot_available,
+            timestamp_ms);
+        update_speed_loop(snapshot,
             snapshot_available,
             timestamp_ms);
         foc_core::update_safety(timestamp_ms);
