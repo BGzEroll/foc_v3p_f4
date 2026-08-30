@@ -11,21 +11,21 @@ static inline void User_ParameterSet(void){
     // 2.pid闭环控制系统设计
     Sguan.control.Current_D.Wc = 100.0f;            // PID电流环D轴参数->截止频率(默认参数)
     Sguan.control.Current_D.Kp = 0.2995f;           // PID电流环D轴参数->Kp
-    Sguan.control.Current_D.Ki = 962.39235f;        // PID电流环D轴参数->Ki
+    Sguan.control.Current_D.Ki = 300.0f;            // PID电流环D轴参数->Ki
     Sguan.control.Current_D.Kd = 0.0f;              // PID电流环D轴参数->Kd
-    Sguan.control.Current_D.OutMax = 12.0f;         // PID电流环D轴参数->最大限幅(默认参数)
-    Sguan.control.Current_D.OutMin = -12.0f;        // PID电流环D轴参数->最小限幅(默认参数)
-    Sguan.control.Current_D.IntMax = 150.0f;        // PID电流环D轴参数->积分项上限(默认参数)
-    Sguan.control.Current_D.IntMin = -150.0f;       // PID电流环D轴参数->积分项下限(默认参数)
+    Sguan.control.Current_D.OutMax = 1.5f;          // PID电流环D轴参数->最大限幅
+    Sguan.control.Current_D.OutMin = -1.5f;         // PID电流环D轴参数->最小限幅
+    Sguan.control.Current_D.IntMax = 0.3f;          // PID电流环D轴参数->积分项上限
+    Sguan.control.Current_D.IntMin = -0.3f;         // PID电流环D轴参数->积分项下限
     /* =========================== 分割线 ========================== */
     Sguan.control.Current_Q.Wc = 100.0f;            // PID电流环Q轴参数->截止频率(默认参数)
-    Sguan.control.Current_Q.Kp = 1.198f;            // PID电流环Q轴参数->Kp
-    Sguan.control.Current_Q.Ki = 3849.5694f;        // PID电流环Q轴参数->Ki
+    Sguan.control.Current_Q.Kp = 0.2995f;            // PID电流环Q轴参数->Kp
+    Sguan.control.Current_Q.Ki = 300.0f;            // PID电流环Q轴参数->Ki
     Sguan.control.Current_Q.Kd = 0.0f;              // PID电流环Q轴参数->Kd
-    Sguan.control.Current_Q.OutMax = 12.0f;         // PID电流环Q轴参数->最大限幅(默认参数)
-    Sguan.control.Current_Q.OutMin = -12.0f;        // PID电流环Q轴参数->最小限幅(默认参数)
-    Sguan.control.Current_Q.IntMax = 150.0f;        // PID电流环Q轴参数->积分项上限(默认参数)
-    Sguan.control.Current_Q.IntMin = -150.0f;       // PID电流环Q轴参数->积分项下限(默认参数)
+    Sguan.control.Current_Q.OutMax = 1.5f;          // PID电流环Q轴参数->最大限幅
+    Sguan.control.Current_Q.OutMin = -1.5f;         // PID电流环Q轴参数->最小限幅
+    Sguan.control.Current_Q.IntMax = 0.3f;          // PID电流环Q轴参数->积分项上限
+    Sguan.control.Current_Q.IntMin = -0.3f;         // PID电流环Q轴参数->积分项下限
 
     #if Open_PI_Control
     Sguan.control.Velocity.Wc = 100.0f;             // 双PID速度外环参数(默认参数)

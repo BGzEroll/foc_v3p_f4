@@ -548,8 +548,8 @@ static void Status_Temp_UNDERTEMPERATURE(SguanFOC_System_STRUCT *sguan,uint32_t 
 
 // Status判断过流保护状态
 static void Status_Current_OVERCURRENT(SguanFOC_System_STRUCT *sguan,uint32_t *count){
-    if ((sguan->current.Real_Id > sguan->safe.Dcur_MAX) || 
-        ((sguan->current.Real_Iq > sguan->safe.Qcur_MAX))){
+    if ((Value_fabsf(sguan->current.Real_Id) > sguan->safe.Dcur_MAX) ||
+        (Value_fabsf(sguan->current.Real_Iq) > sguan->safe.Qcur_MAX)){
         Status_Switch_STANDBY(sguan,count);
     }
 }
@@ -604,9 +604,9 @@ static void Status_Switch_Loop(SguanFOC_System_STRUCT *sguan){
         }
     }
     // 3.过流保护
-    if ((sguan->status != MOTOR_STATUS_OVERCURRENT) && 
-        ((sguan->current.Real_Id > sguan->safe.Dcur_MAX) || 
-        (sguan->current.Real_Iq > sguan->safe.Qcur_MAX))){
+    if ((sguan->status != MOTOR_STATUS_OVERCURRENT) &&
+        ((Value_fabsf(sguan->current.Real_Id) > sguan->safe.Dcur_MAX) ||
+        (Value_fabsf(sguan->current.Real_Iq) > sguan->safe.Qcur_MAX))){
         sguan->status = MOTOR_STATUS_OVERCURRENT;
     }
     // 4.编码错误
@@ -919,7 +919,7 @@ static void Sguan_Start_Tick(void){
         Sguan.status = MOTOR_STATUS_CALIBRATING;
         Offset_CurrentRead(&Sguan);
         //电机回零操作
-        Sguan_Positioning_Set(&Sguan,0.3f*Sguan.motor.VBUS,0.0f);
+        Sguan_Positioning_Set(&Sguan,0.1f*Sguan.motor.VBUS,0.0f);
         User_Delay(1000);
         // 读取角度偏置
         Offset_EncoderRead(&Sguan);
@@ -945,13 +945,14 @@ void SguanFOC_High_Loop(void){
         Sguan.flag.PWM_Calc = 1;
 
         // 如果在初始化完成，进入函数
-        if (Sguan.status > 3 && Sguan.status < 19){            
+        if (Sguan.status >= MOTOR_STATUS_IDLE &&
+            Sguan.status < MOTOR_STATUS_OVERVOLTAGE){
             // 计算编码器和电流
             Sguan_Calculate_Loop(&Sguan);
             // 运算PID并执行SVPWM(如果计算超时，会更新错误状态并停用此线程)
             Sguan_GeneratePWM_Loop(&Sguan);
         }
-        if (Sguan.status >= 19){
+        if (Sguan.status >= MOTOR_STATUS_OVERVOLTAGE){
             static uint8_t status = 0xFF;
             if (status != Sguan.status){
                 // 电压给定归零
@@ -1063,4 +1064,3 @@ void SguanFOC_main_Loop(void){
     }
     #endif // Printf_Debug
 }
-

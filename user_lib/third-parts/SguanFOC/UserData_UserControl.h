@@ -10,7 +10,7 @@
 static inline void User_UserControl(void){
     // 先用小幅 Q 轴电流验证采样极性和电流闭环，后续再接入外部指令。
     Sguan.foc.Target_Id = 0.0f;
-    Sguan.foc.Target_Iq = 0.05f;
+    Sguan.foc.Target_Iq = 0.10f;
 }
 
 static inline void User_AO_Adjust(float AO){

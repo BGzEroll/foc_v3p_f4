@@ -9,6 +9,8 @@
 #include "task.h"
 
 extern volatile float sguan_encoder_angle_rad;
+extern volatile float sguan_encoder_velocity_rad_s;
+extern volatile uint32_t sguan_encoder_timestamp_us;
 
 /* 用户自己的CODE END Includes */
 
@@ -45,7 +47,12 @@ static inline signed int User_ReadADC_Raw(unsigned char Current_CH){
 }
 
 static inline float User_Encoder_ReadRad(void){
-    return sguan_encoder_angle_rad;
+    uint32_t elapsed_us = __HAL_TIM_GET_COUNTER(&htim5) -
+        sguan_encoder_timestamp_us;
+    if(elapsed_us > 1000){elapsed_us = 1000;}
+
+    return Value_normalize(sguan_encoder_angle_rad +
+        sguan_encoder_velocity_rad_s * (float)elapsed_us * 0.000001f);
 }
 
 static inline void User_PwmDuty_Set(unsigned short int Duty_u,

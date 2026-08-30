@@ -12,11 +12,11 @@ static inline void User_MotorSet(void){
     // 2.flag电机标志位
     Sguan.flag.PWM_watchdog_limit = 10; // (uint8_t)PWM错误限幅
     // 3.identify电机参数辨识结果(根据实际电机参数填写，或者通过辨识算法得到)
-    Sguan.identify.Ld = 0.0000519338f;  // (float)D轴电感
-    Sguan.identify.Lq = 0.0000519338f;  // (float)Q轴电感
-    Sguan.identify.Ls = 0.0000519338f;  // (float)相线电感
-    Sguan.identify.Rs = 0.19067f;       // (float)相线电阻
-    Sguan.identify.Flux = 0.00028043f;  // (float)磁链
+    Sguan.identify.Ld = 0.00086f;       // (float)D轴电感
+    Sguan.identify.Lq = 0.00086f;       // (float)Q轴电感
+    Sguan.identify.Ls = 0.00086f;       // (float)相线电感
+    Sguan.identify.Rs = 2.55f;          // (float)相电阻
+    Sguan.identify.Flux = 0.0035f;      // (float)磁链
     // 4.motor电机参数辨识
     Sguan.motor.Poles = 7;              // (uint8_t)极对极数
     Sguan.motor.VBUS = 12.0f;           // (float)母线电压
@@ -29,7 +29,7 @@ static inline void User_MotorSet(void){
 
     Sguan.motor.Current_Dir0 = 1;       // (int8_t)相线电流方向1->正向，负1->负向
     Sguan.motor.Current_Dir1 = -1;      // (int8_t)相线电流方向1->正向，负1->负向
-    Sguan.motor.Current_Num = 1;        // (uint8_t)电流通道0->AB相，1->AC相，2->BC相
+    Sguan.motor.Current_Num = 1;        // 当前驱动板沿用原先可运行的 AC 采样映射
     Sguan.motor.ADC_Precision = 4096;   // (uint32_t)ADC采样精度
     Sguan.motor.Amplifier = 50.0f;      // (float)运算放大器增益
     Sguan.motor.MCU_Voltage = 3.3f;     // (float)DSP/单片机的ADC电压基准
@@ -43,8 +43,8 @@ static inline void User_MotorSet(void){
     Sguan.safe.Temp_MIN = -20.0f;       // (float)驱动器允许最小温度
     Sguan.safe.Temp_watchdog_limit = 1000;
 
-    Sguan.safe.Dcur_MAX = 1.8f;         // (float)电机最大电流D轴限制
-    Sguan.safe.Qcur_MAX = 1.8f;         // (float)电机最大电流Q轴限制
+    Sguan.safe.Dcur_MAX = 0.5f;         // (float)电机最大电流D轴限制
+    Sguan.safe.Qcur_MAX = 0.5f;         // (float)电机最大电流Q轴限制
     Sguan.safe.DQcur_watchdog_limit = 1000;
 
     Sguan.safe.DISABLED_watchdog_limit = 1000;

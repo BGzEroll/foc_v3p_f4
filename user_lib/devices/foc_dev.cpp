@@ -33,6 +33,8 @@ static volatile bool rotor_ready = false;
 extern "C"
 {
     volatile float sguan_encoder_angle_rad = 0.0f;
+    volatile float sguan_encoder_velocity_rad_s = 0.0f;
+    volatile uint32_t sguan_encoder_timestamp_us = 0;
 }
 
 /**
@@ -111,6 +113,9 @@ static void foc_sensor_task_entry(void *argument)
     if(rotor.read_task(initial_sample) == foc_result::OK)
     {
         sguan_encoder_angle_rad = initial_sample.mechanical_angle_rad;
+        sguan_encoder_velocity_rad_s =
+            initial_sample.mechanical_velocity_rad_s;
+        sguan_encoder_timestamp_us = initial_sample.timestamp_us;
         rotor_ready = true;
     }
 
@@ -122,6 +127,9 @@ static void foc_sensor_task_entry(void *argument)
             if(rotor.read_task(sample) == foc_result::OK)
             {
                 sguan_encoder_angle_rad = sample.mechanical_angle_rad;
+                sguan_encoder_velocity_rad_s =
+                    sample.mechanical_velocity_rad_s;
+                sguan_encoder_timestamp_us = sample.timestamp_us;
             }
         }
 
