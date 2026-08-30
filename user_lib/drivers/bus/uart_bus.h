@@ -1,7 +1,7 @@
 #ifndef UART_BUS_H
 #define UART_BUS_H
 
-#include <stdint.h>
+#include "stm32f4xx_hal.h"
 
 enum class uart_result : uint8_t
 {

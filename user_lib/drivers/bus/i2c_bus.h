@@ -1,7 +1,7 @@
 #ifndef I2C_BUS_H
 #define I2C_BUS_H
 
-#include <stdint.h>
+#include "stm32f4xx_hal.h"
 
 enum class i2c_result : uint8_t
 {
