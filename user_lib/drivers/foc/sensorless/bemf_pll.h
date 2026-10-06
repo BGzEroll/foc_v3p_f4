@@ -20,6 +20,7 @@ typedef struct {
     float current_hat_a, current_hat_b, emf_state_a, emf_state_b;
     float emf_alpha_v, emf_beta_v, emf_magnitude_v;
     float angle_rad, speed_rad_s, phase_error_rad;
+    float phase_error_energy; // 10 ms EMA of squared detector error, rad^2.
     float observer_k_i, observer_k_e, pll_kp, pll_ki;
     uint32_t good_samples, required_samples, invalid_samples;
     int8_t direction;

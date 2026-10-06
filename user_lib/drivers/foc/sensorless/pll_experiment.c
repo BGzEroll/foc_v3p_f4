@@ -4,6 +4,8 @@
 pll_experiment_state pll_experiment;
 void pll_experiment_init(void) {
     memset(&pll_experiment,0,sizeof(pll_experiment));
+    pll_experiment.encoder_target_speed_rad_s=40.0f; // Mechanical rad/s.
+    pll_experiment.encoder_current_limit_a=0.10f;
     bemf_pll_config c=bemf_pll_default_config();
     // Motor recordings showed periodic noise; keep the tracking bandwidth low.
     c.pll_wn_rad_s=60.0f;
@@ -44,6 +46,7 @@ void pll_experiment_step(float va,float vb,float ia,float ib,float ref,float wre
     int good=d->current_mapping==0 && s->locked && isfinite(ref) && isfinite(wref) && fabsf(d->angle_error)<0.20f &&
         fabsf(wref)>30 && fabsf(s->speed_rad_s-wref)<0.2f*fabsf(wref) && bus>10 && bus<14;
     if (good) { if(d->switch_good<10000) d->switch_good++; } else d->switch_good=0;
+    if(d->switch_good>d->max_switch_good)d->max_switch_good=d->switch_good;
     if (d->request==1 && !d->active && d->switch_good>=10000 && !d->fault) {
         d->active=1; d->active_samples=0; d->request=0;
     }

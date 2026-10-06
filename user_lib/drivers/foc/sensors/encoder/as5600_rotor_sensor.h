@@ -9,7 +9,7 @@ class as5600_rotor_sensor : public rotor_sensor
 {
     public:
         as5600_rotor_sensor(uint8_t i2c_bus_id,
-            uint8_t device_address);
+            uint8_t device_address, bool low_latency = false);
 
     public:
         foc_result init() override;
@@ -35,6 +35,15 @@ class as5600_rotor_sensor : public rotor_sensor
         uint32_t previous_timestamp_us = 0;
         uint32_t sequence = 0;
         uint32_t error_count = 0;
+        uint32_t consecutive_errors = 0;
+        uint32_t last_i2c_result = 0;
+        uint32_t last_success_us = 0;
+        uint32_t config_before = 0;
+        uint32_t config_after = 0;
+        uint32_t magnet_status = 0;
+        uint32_t magnet_agc = 0, magnet_magnitude = 0;
+        uint32_t last_read_duration_us = 0, max_read_duration_us = 0;
+        bool low_latency;
         bool initialized = false;
         bool first_sample = true;
 };

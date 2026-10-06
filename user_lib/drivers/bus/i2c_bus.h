@@ -20,6 +20,13 @@ enum class i2c_result : uint8_t
     RECOVERY_FAILED
 };
 
+// SWD-visible diagnostics survive retries within one MCU boot.
+struct i2c_bus_diagnostics {
+    uint32_t recovery_attempts, recovery_failures, transfers_ok, transfers_failed;
+    uint32_t last_hal_error, last_result, last_lines_before, last_lines_after;
+};
+extern volatile i2c_bus_diagnostics i2c_bus_debug[2];
+
 class i2c_bus
 {
     public:
@@ -34,6 +41,10 @@ class i2c_bus
             uint8_t register_address,
             uint8_t *data,
             uint16_t size,
+            uint32_t lock_timeout_ms = DEFAULT_LOCK_TIMEOUT_MS,
+            uint32_t transfer_timeout_ms = DEFAULT_TRANSFER_TIMEOUT_MS);
+        i2c_result read_bytes_blocking(uint8_t device_address,
+            uint8_t register_address, uint8_t *data, uint16_t size,
             uint32_t lock_timeout_ms = DEFAULT_LOCK_TIMEOUT_MS,
             uint32_t transfer_timeout_ms = DEFAULT_TRANSFER_TIMEOUT_MS);
         i2c_result write_bytes(uint8_t device_address,

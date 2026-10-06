@@ -4,6 +4,8 @@
 
 static constexpr uint8_t AS5600_RAW_ANGLE_REGISTER = 0x0C;
 static constexpr uint16_t AS5600_RESOLUTION_COUNTS = 4096;
+static constexpr uint32_t AS5600_LOCK_TIMEOUT_MS = 1;
+static constexpr uint32_t AS5600_TRANSFER_TIMEOUT_MS = 2;
 static constexpr int16_t AS5600_HALF_RESOLUTION_COUNTS = 2048;
 static constexpr float TWO_PI = 6.28318530717958647692f;
 static constexpr float COUNT_TO_RADIAN =
@@ -16,9 +18,9 @@ static constexpr float COUNT_TO_RADIAN =
  * @param device_address AS5600 七位地址
  */
 as5600_rotor_sensor::as5600_rotor_sensor(uint8_t i2c_bus_id,
-    uint8_t device_address)
+    uint8_t device_address, bool low_latency)
     : i2c(i2c_bus_id),
-      device_address(device_address)
+      device_address(device_address), low_latency(low_latency)
 {
 }
 
@@ -40,7 +42,7 @@ foc_result as5600_rotor_sensor::init()
     previous_count = 0;
     previous_timestamp_us = 0;
     sequence = 0;
-    error_count = 0;
+    // Keep failures visible across retries after an MCU-only reset.
 
     if(!sample_topic.init())
     {
@@ -54,6 +56,31 @@ foc_result as5600_rotor_sensor::init()
         return foc_result::SENSOR_ERROR;
     }
 
+    if(low_latency) {
+        // Volatile CONF only; never issue an OTP BURN command. A powered sensor
+        // retains CONF across MCU resets, so read/modify/verify on every boot.
+        uint8_t conf[2]{};
+        auto read=i2c.read_bytes_blocking(device_address,0x07,conf,2,1,2);
+        if(read!=i2c_result::OK) {error_count++;return foc_result::SENSOR_ERROR;}
+        config_before=((uint16_t)conf[0]<<8)|conf[1];
+        // SF=11 (2x linear filter), FTH=0, watchdog off, normal power mode.
+        // Preserve analog/PWM output selection, hysteresis and factory bits.
+        uint16_t wanted=(config_before & ~0x3f03u)|0x0300u;
+        conf[0]=wanted>>8;conf[1]=wanted&0xff;
+        auto write=i2c.write_bytes(device_address,0x07,conf,2,1,2);
+        if(write!=i2c_result::OK) {error_count++;return foc_result::SENSOR_ERROR;}
+        read=i2c.read_bytes_blocking(device_address,0x07,conf,2,1,2);
+        config_after=((uint16_t)conf[0]<<8)|conf[1];
+        uint8_t status[2]{};
+        auto status_result=i2c.read_bytes_blocking(device_address,0x0b,status,2,1,2);
+        magnet_status=status[0];
+        uint8_t magnetic[3]{};
+        auto magnetic_result=i2c.read_bytes_blocking(device_address,0x1a,magnetic,3,1,2);
+        magnet_agc=magnetic[0];
+        magnet_magnitude=(((uint16_t)magnetic[1]<<8)|magnetic[2])&0x0fff;
+        if(read!=i2c_result::OK || config_after!=wanted || status_result!=i2c_result::OK ||
+           magnetic_result!=i2c_result::OK || !(status[0]&0x20u)) {error_count++;return foc_result::SENSOR_ERROR;}
+    }
     initialized = true;
     foc_result result = read_and_publish_sample();
     if(result != foc_result::OK)
@@ -125,13 +152,19 @@ uint32_t as5600_rotor_sensor::communication_error_count() const
 foc_result as5600_rotor_sensor::read_and_publish_sample()
 {
     uint8_t raw_data[2]{};
-    i2c_result read_result = i2c.read_bytes(device_address,
+    uint32_t read_start_us=sys_time::get_us_tick();
+    i2c_result read_result = i2c.read_bytes_blocking(device_address,
         AS5600_RAW_ANGLE_REGISTER,
         raw_data,
-        sizeof(raw_data));
+        sizeof(raw_data),AS5600_LOCK_TIMEOUT_MS,AS5600_TRANSFER_TIMEOUT_MS);
+    uint32_t read_end_us=sys_time::get_us_tick();
+    last_read_duration_us=read_end_us-read_start_us;
+    if(last_read_duration_us>max_read_duration_us)max_read_duration_us=last_read_duration_us;
+    last_i2c_result=(uint32_t)read_result;
     if(read_result != i2c_result::OK)
     {
         error_count++;
+        consecutive_errors++;
         return foc_result::SENSOR_ERROR;
     }
 
@@ -140,7 +173,9 @@ foc_result as5600_rotor_sensor::read_and_publish_sample()
     raw_count &= AS5600_RESOLUTION_COUNTS - 1;
 
     rotor_sample sample{};
-    process_raw_angle(raw_count, sys_time::get_us_tick(), sample);
+    process_raw_angle(raw_count, read_end_us, sample);
+    last_success_us=sample.timestamp_us;
+    consecutive_errors=0;
     if(!sample_topic.publish(sample))
     {
         error_count++;

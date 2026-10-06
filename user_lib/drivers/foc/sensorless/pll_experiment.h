@@ -15,7 +15,11 @@ typedef struct {
     volatile uint32_t missed_periods, max_period_us;
     uint32_t previous_mapping;
     uint32_t previous_us, capture_divider, switch_good, active_samples;
+    uint32_t max_switch_good;
     float reference_angle, reference_speed, angle_error;
+    float startup_encoder_delta_rad, startup_max_phase_a;
+    float startup_reverse_delta_rad, startup_zero_spread_rad;
+    float encoder_target_speed_rad_s, encoder_current_limit_a, encoder_iq_command_a;
     bemf_pll estimator;
     float capture[512][16];
 } pll_experiment_state;

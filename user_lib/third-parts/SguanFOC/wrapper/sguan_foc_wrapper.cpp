@@ -78,6 +78,7 @@ foc_result sguan_foc_wrapper::init(const sguan_foc_config &config)
         !isfinite(config.limits.min_bus_voltage_v) ||
         !isfinite(config.limits.max_bus_voltage_v) ||
         !isfinite(config.nominal_bus_voltage_v) ||
+        !isfinite(config.alignment_voltage_v) || !isfinite(config.max_phase_current_a) ||
         !isfinite(config.control_period_s) ||
         config.motor.pole_pairs == 0 ||
         config.motor.resistance_ohm <= 0.0f ||
@@ -100,6 +101,8 @@ foc_result sguan_foc_wrapper::init(const sguan_foc_config &config)
         config.limits.min_bus_voltage_v >=
             config.limits.max_bus_voltage_v ||
         config.nominal_bus_voltage_v <= 0.0f ||
+        config.alignment_voltage_v<=0 || config.alignment_voltage_v>config.nominal_bus_voltage_v*0.5f ||
+        config.max_phase_current_a<=0 ||
         config.nominal_bus_voltage_v < config.limits.min_bus_voltage_v ||
         config.nominal_bus_voltage_v > config.limits.max_bus_voltage_v ||
         config.pwm_period == 0 ||
@@ -277,6 +280,7 @@ foc_result sguan_foc_wrapper::init_foc()
     if(state_ == sguan_foc_state::INITIALIZING)
     {
         SguanFOC_main_Loop();
+        if(state_==sguan_foc_state::FAULT) return last_result_;
         if(Sguan.status >= MOTOR_STATUS_IDLE &&
             Sguan.status < MOTOR_STATUS_OVERVOLTAGE)
         {
@@ -448,6 +452,11 @@ void sguan_foc_wrapper::enable()
 
     uint32_t interrupt_state = __get_PRIMASK();
     __disable_irq();
+    PID_Init(&Sguan.control.Current_D);
+    PID_Init(&Sguan.control.Current_Q);
+    TIM8->CCR1 = TIM8->CCR2 = TIM8->CCR3 = config_.pwm_period/2;
+    TIM8->BDTR |= TIM_BDTR_MOE;
+    MOTOR_EN_GPIO_Port->BSRR = MOTOR_EN_Pin;
     output_enabled_ = true;
     __DMB();
     __set_PRIMASK(interrupt_state);
@@ -456,8 +465,7 @@ void sguan_foc_wrapper::enable()
 /**
  * @brief 禁止业务目标输出并保持 backend 的校准状态
  *
- * @note 这里只提交零目标，不写 MOTOR_STATUS_DISABLED，也不关闭 MOE，
- *       因而不会触发第三方状态机清空编码器和电流校准数据。
+ * @note 拉低 MOTOR_EN；保留 MOE 使 ADC 仍可采样，不清空校准状态。
  */
 void sguan_foc_wrapper::disable()
 {
@@ -473,6 +481,7 @@ void sguan_foc_wrapper::disable()
     command_.target_velocity_rad_s = 0.0f;
     command_.target_position_rad = 0.0;
     output_enabled_ = false;
+    MOTOR_EN_GPIO_Port->BSRR = (uint32_t)MOTOR_EN_Pin << 16;
     __DMB();
     __set_PRIMASK(interrupt_state);
 }
@@ -609,12 +618,12 @@ sguan_foc_config sguan_foc_wrapper::default_config()
     config.motor.flux_wb = 0.0035f;
     config.motor.motor_direction = 1;
     config.motor.encoder_direction = -1;
-    config.motor.pwm_direction = -1;
+    config.motor.pwm_direction = 1;
 
     config.current_pi.kp = 0.2995f;
     config.current_pi.ki = 300.0f;
-    config.current_pi.output_limit_v = 1.5f;
-    config.current_pi.integral_limit_v = 0.3f;
+    config.current_pi.output_limit_v = 3.0f;
+    config.current_pi.integral_limit_v = 1.0f;
 
     config.limits.max_id_a = 0.5f;
     config.limits.max_iq_a = 0.5f;
@@ -622,6 +631,8 @@ sguan_foc_config sguan_foc_wrapper::default_config()
     config.limits.max_bus_voltage_v = 14.0f;
 
     config.nominal_bus_voltage_v = 12.0f;
+    config.alignment_voltage_v = 3.0f;
+    config.max_phase_current_a = 1.8f; // Same absolute phase limit as foc_test.
     config.pwm_period = 4200;
     config.control_period_s = 0.00005f;
 
@@ -665,7 +676,7 @@ void sguan_foc_wrapper::loop_foc()
     }
 
     if(state_ != sguan_foc_state::READY &&
-        state_ != sguan_foc_state::FAULT)
+        state_ != sguan_foc_state::FAULT && state_ != sguan_foc_state::INITIALIZING)
     {
         return;
     }
@@ -676,8 +687,33 @@ void sguan_foc_wrapper::loop_foc()
         return;
     }
 
+    // The backend does not read currents during its alignment delay. Enforce
+    // the foc_test absolute phase-current bound on every ADC interrupt there.
+    if(state_ == sguan_foc_state::INITIALIZING && current_calibration_done_) {
+        phase_current_sample current{};
+        foc_result read=current_sense_->read_conversion_from_isr(sys_time::get_us_tick(),current);
+        float maximum=fmaxf(fabsf(current.current_a),fmaxf(fabsf(current.current_b),fabsf(current.current_c)));
+        if(maximum>pll_experiment.startup_max_phase_a)pll_experiment.startup_max_phase_a=maximum;
+        if(read!=foc_result::OK ||
+            !current.valid || fabsf(current.current_a)>config_.max_phase_current_a ||
+            fabsf(current.current_b)>config_.max_phase_current_a || fabsf(current.current_c)>config_.max_phase_current_a) {
+            current_fault_=true; state_=sguan_foc_state::FAULT; output_enabled_=false;
+            Sguan.status=MOTOR_STATUS_SENSOR_ERROR;
+            last_result_=foc_result::DRIVER_FAULT;
+            MOTOR_EN_GPIO_Port->BSRR=(uint32_t)MOTOR_EN_Pin<<16; TIM8->BDTR &= ~TIM_BDTR_MOE;
+            return;
+        }
+        return;
+    }
+
     uint32_t loop_start_cycles = DWT->CYCCNT;
     SguanFOC_High_Loop();
+    if(output_enabled_ && (fabsf(Sguan.current.Real_Ia)>config_.max_phase_current_a ||
+        fabsf(Sguan.current.Real_Ib)>config_.max_phase_current_a || fabsf(Sguan.current.Real_Ic)>config_.max_phase_current_a)) {
+        current_fault_=true; state_=sguan_foc_state::FAULT; output_enabled_=false;
+        last_result_=foc_result::DRIVER_FAULT;
+        MOTOR_EN_GPIO_Port->BSRR=(uint32_t)MOTOR_EN_Pin<<16; TIM8->BDTR &= ~TIM_BDTR_MOE;
+    }
     if(state_ == sguan_foc_state::READY && output_enabled_)
     {
         rotor_sample reference{};
@@ -705,7 +741,7 @@ void sguan_foc_wrapper::loop_foc()
                 config_.motor.encoder_direction*config_.motor.pole_pairs;
         }
         // Reconstruct average logical phase voltage from the final saturated duties.
-        // PWM_Dir=-1 in this board convention: high input gives inverse effective duty.
+        // Canonical SVPWM and the foc_test driver use non-inverted duty.
         float du=(float)Sguan.foc.Duty_u/config_.pwm_period;
         float dv=(float)Sguan.foc.Duty_v/config_.pwm_period;
         float dw=(float)Sguan.foc.Duty_w/config_.pwm_period;
@@ -1175,4 +1211,17 @@ extern "C" uint8_t sguan_foc_wrapper_current_offset_prepared(void)
 
     return sguan_foc_wrapper::active_instance_->
         current_calibration_done_ ? 1 : 0;
+}
+
+extern "C" float sguan_foc_wrapper_alignment_voltage(void) {
+    auto *p=sguan_foc_wrapper::active_instance_; return p?p->config_.alignment_voltage_v:0;
+}
+extern "C" float sguan_foc_wrapper_voltage_limit(void) {
+    auto *p=sguan_foc_wrapper::active_instance_; return p?p->config_.current_pi.output_limit_v:0;
+}
+extern "C" void sguan_foc_wrapper_set_encoder_direction(int8_t direction) {
+    auto *p=sguan_foc_wrapper::active_instance_;
+    if(p && (direction==1 || direction==-1)) {
+        p->config_.motor.encoder_direction=direction; Sguan.motor.Encoder_Dir=direction;
+    }
 }

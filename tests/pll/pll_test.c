@@ -2,6 +2,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#define PI_F 3.14159265359f
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x); return 1; } } while(0)
 int main(void) {
     bemf_pll s; bemf_pll_config c = bemf_pll_default_config();
@@ -41,6 +42,33 @@ int main(void) {
      * The speed floor must prevent advertising a rotational lock. */
     for(int n=0;n<10000;n++) CHECK(bemf_pll_step(&s,0.3f,0.2f,0,0));
     CHECK(!s.locked && fabsf(s.speed_rad_s)<1);
+    /* Detector ripple can exceed 0.15 rad while the actual filtered angle
+     * remains accurate. Lock uses RMS; a large sustained phase fault clears it. */
+    c=bemf_pll_default_config();c.pll_wn_rad_s=60;
+    CHECK(bemf_pll_init(&s,&c,1));
+    int noise_locks=0;float ripple_peak=0,angle_peak=0;
+    for(int n=0;n<20000;n++) {
+        float t=n*c.dt_s,theta=270*t;
+        float phase=theta+0.20f*sinf(2*PI_F*250*t);
+        float ia=.03f*cosf(theta),ib=.03f*sinf(theta);
+        float va=c.resistance_ohm*ia-c.inductance_h*.03f*270*sinf(theta)-.0035f*270*sinf(phase);
+        float vb=c.resistance_ohm*ib+c.inductance_h*.03f*270*cosf(theta)+.0035f*270*cosf(phase);
+        CHECK(bemf_pll_step(&s,va,vb,ia,ib));
+        if(n>10000) {
+            float pe=fabsf(s.phase_error_rad),ae=fabsf(bemf_pll_wrap(s.angle_rad-theta));
+            if(pe>ripple_peak)ripple_peak=pe;
+            if(ae>angle_peak)angle_peak=ae;
+            noise_locks+=s.locked;
+        }
+    }
+    CHECK(ripple_peak>.15f && angle_peak<.025f && noise_locks>9900);
+    for(int n=20000;n<20200;n++) {
+        float theta=270*n*c.dt_s,phase=theta+1.2f;
+        float ia=.03f*cosf(theta),ib=.03f*sinf(theta);
+        CHECK(bemf_pll_step(&s,c.resistance_ohm*ia-c.inductance_h*.03f*270*sinf(theta)-.0035f*270*sinf(phase),
+            c.resistance_ohm*ib+c.inductance_h*.03f*270*cosf(theta)+.0035f*270*cosf(phase),ia,ib));
+    }
+    CHECK(!s.locked);
     puts("PASS: bidirectional tracking, speed step, wrapping, standstill, invalid input/config");
     return 0;
 }

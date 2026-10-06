@@ -54,6 +54,8 @@ struct sguan_foc_config
     } limits;
 
     float nominal_bus_voltage_v = 0.0f;
+    float alignment_voltage_v = 0.0f;
+    float max_phase_current_a = 0.0f;
     uint16_t pwm_period = 0;
     float control_period_s = 0.0f;
 };
@@ -141,6 +143,9 @@ class sguan_foc_wrapper
             float *ib,
             float *ic);
         friend uint8_t sguan_foc_wrapper_current_offset_prepared(void);
+        friend float sguan_foc_wrapper_alignment_voltage(void);
+        friend float sguan_foc_wrapper_voltage_limit(void);
+        friend void sguan_foc_wrapper_set_encoder_direction(int8_t direction);
 
         struct command
         {

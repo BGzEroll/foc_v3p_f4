@@ -10,6 +10,7 @@
  * Copyright (c) 2026 by $星必尘Sguan, All Rights Reserved. 
  */
 #include "Sguan_math.h"
+#include <math.h>
 
 // 内部宏定义声明
 #define Value_rad60 1.047197551196598f
@@ -20,7 +21,6 @@
 static float Value_fmodf(float x, float y);
 static float f1(float x);
 static float f2(float x);
-static void Overmod(float *d, float *q);
 
 // 重写fmodf函数
 static float Value_fmodf(float x, float y){
@@ -160,48 +160,21 @@ void fast_sin_cos(float x, float *sin_x, float *cos_x) {
 }
 
 // 对DQ轴电压进行幅值限制，防止过调制
-static void Overmod(float *d, float *q){
-    // 计算合成“矢量幅值的平方”
-    float Vref = (*d)*(*d) + (*q)*(*q);
-    
-    if (Vref > 1.0f) {
-      float scale = 1.0f / Value_sqrtf(Vref);
-      *d *= scale;
-      *q *= scale;
-      // 幅值限制处理,如果“幅值平方”超过 1,进行等比例缩放
-    }
-}
+
 
 // 电机SVPWM空间矢量调制函数
 void SVPWM(float d, float q, float sin_phi, float cos_phi, float *d_u, float *d_v, float *d_w){
-  d = Value_Limit(d,1,-1);   // 限幅函数
-  q = Value_Limit(q,1,-1);
-
-  Overmod(&d, &q);    // 过调制处理
-
-  const int v[6][3] = {{1, 0, 0}, {1, 1, 0}, {0, 1, 0}, {0, 1, 1}, {0, 0, 1}, {1, 0, 1}};
-  const int K_to_sector[] = {4, 6, 5, 5, 3, 1, 2, 2};
-  float alpha,beta;
-  ipark(&alpha, &beta, d, q, sin_phi, cos_phi);
-
-  int A = (beta > 0);
-  int B = (Value_fabsf(beta) > Value_SQRT3 * Value_fabsf(alpha));
-  int C = (alpha > 0);
-  int K = 4 * A + 2 * B + C;
-  int sector = K_to_sector[K];
-
-  float angle_data0 = sector * Value_rad60;
-  float angle_data1 = angle_data0 - Value_rad60;
-  float sin_m,cos_m,sin_n,cos_n;
-  fast_sin_cos(angle_data0,&sin_m,&cos_m);
-  fast_sin_cos(angle_data1,&sin_n,&cos_n);
-
-  float t_m = sin_m * alpha - cos_m * beta;
-  float t_n = beta * cos_n - alpha * sin_n;
-  float t_0 = 1 - t_m - t_n;
-  *d_u = t_m * v[sector - 1][0] + t_n * v[sector % 6][0] + t_0 / 2;
-  *d_v = t_m * v[sector - 1][1] + t_n * v[sector % 6][1] + t_0 / 2;
-  *d_w = t_m * v[sector - 1][2] + t_n * v[sector % 6][2] + t_0 / 2;
+  // Physical D/Q volts divided by bus volts, with foc_test's zero-sequence convention.
+  // The old active-vector durations lacked the sqrt(3) scale factor.
+  if(!isfinite(d) || !isfinite(q) || !isfinite(sin_phi) || !isfinite(cos_phi)) {
+    *d_u=*d_v=*d_w=0.5f; return;
+  }
+  float alpha,beta; ipark(&alpha,&beta,d,q,sin_phi,cos_phi);
+  float norm2=alpha*alpha+beta*beta;
+  if(norm2>1.0f/3.0f) { float scale=0.57735026919f/sqrtf(norm2); alpha*=scale; beta*=scale; }
+  float a=alpha, b=-0.5f*alpha+0.86602540378f*beta, c=-0.5f*alpha-0.86602540378f*beta;
+  float common=-0.5f*(fmaxf(a,fmaxf(b,c))+fminf(a,fminf(b,c)));
+  *d_u=0.5f+a+common; *d_v=0.5f+b+common; *d_w=0.5f+c+common;
 }
 
 // 克拉克变换

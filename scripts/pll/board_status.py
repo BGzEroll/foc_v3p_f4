@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read experiment status without halting the CPU (matching ELF needed)."""
 import socket,subprocess,re,struct,json,argparse
+from check_image import check_image
 p=argparse.ArgumentParser();p.add_argument('--elf',default='build/PLLRelease/project.elf');args=p.parse_args()
 sock=socket.create_connection(('localhost',6666),timeout=10)
 def tcl(cmd):
@@ -10,13 +11,26 @@ def tcl(cmd):
         if not chunk: raise RuntimeError('OpenOCD closed Tcl connection')
         buf+=chunk
     return buf[:-1].decode()
+check_image(tcl,args.elf)
 fields=[('motor_instance.state_',8,'B'),('motor_instance.last_result_',8,'B'),
  ('motor_instance.output_enabled_',8,'B'),('Sguan.status',8,'B'),
  ('rotor.sequence',32,'I'),('rotor.error_count',32,'I'),('rotor.previous_timestamp_us',32,'I'),
+ ('rotor.consecutive_errors',32,'I'),('rotor.last_i2c_result',32,'I'),('rotor.last_success_us',32,'I'),
+ ('rotor.config_before',32,'I'),('rotor.config_after',32,'I'),('rotor.magnet_status',32,'I'),
+ ('rotor.magnet_agc',32,'I'),('rotor.magnet_magnitude',32,'I'),
+ ('rotor.last_read_duration_us',32,'I'),('rotor.max_read_duration_us',32,'I'),
+ ('i2c_bus_debug[0].recovery_attempts',32,'I'),('i2c_bus_debug[0].recovery_failures',32,'I'),
+ ('i2c_bus_debug[0].transfers_ok',32,'I'),('i2c_bus_debug[0].transfers_failed',32,'I'),
+ ('i2c_bus_debug[0].last_hal_error',32,'I'),('i2c_bus_debug[0].last_lines_before',32,'I'),('i2c_bus_debug[0].last_lines_after',32,'I'),
  ('uwTick',32,'I'),('pll_experiment.samples',32,'I'),('pll_experiment.max_loop_cycles',32,'I'),
  ('pll_experiment.last_period_us',32,'I'),('pll_experiment.active',32,'I'),('pll_experiment.fault',32,'I'),
  ('pll_experiment.encoder_fault_age_us',32,'I'),('pll_experiment.encoder_fault_sample_us',32,'I'),('pll_experiment.encoder_fault_now_us',32,'I'),
  ('pll_experiment.missed_periods',32,'I'),('pll_experiment.max_period_us',32,'I'),
+ ('pll_experiment.startup_encoder_delta_rad',32,'f'),('pll_experiment.startup_max_phase_a',32,'f'),
+ ('pll_experiment.startup_reverse_delta_rad',32,'f'),('pll_experiment.startup_zero_spread_rad',32,'f'),
+ ('pll_experiment.encoder_target_speed_rad_s',32,'f'),('pll_experiment.encoder_current_limit_a',32,'f'),('pll_experiment.encoder_iq_command_a',32,'f'),
+ ('pll_experiment.switch_good',32,'I'),('pll_experiment.max_switch_good',32,'I'),('pll_experiment.active_samples',32,'I'),
+ ('Sguan.motor.Encoder_Dir',8,'b'),('Sguan.encoder.Pos_offset',32,'f'),
  ('Sguan.encoder.Real_Espeed',32,'f'),('Sguan.current.Real_Id',32,'f'),('Sguan.current.Real_Iq',32,'f'),
  ('Sguan.foc.Real_VBUS',32,'f')]
 data={}

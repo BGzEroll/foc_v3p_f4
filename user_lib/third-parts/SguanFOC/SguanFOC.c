@@ -19,6 +19,7 @@
 #include "UserData_Parameter.h"
 #include "UserData_UserControl.h"
 #include "drivers/foc/sensorless/pll_experiment.h"
+#include <math.h>
 /* USER CODE END Includes */
 
 // 电机控制核心结构体设计
@@ -44,7 +45,6 @@ static void Transfer_PLL_Loop(PLL_STRUCT *pll,uint8_t mode,float input_Rad);
  * @param {SguanFOC_System_STRUCT} *sguan
  * @return {*}
  */
-static void Offset_EncoderRead(SguanFOC_System_STRUCT *sguan);
 /**
  * @description: 3.Current内部静态函数声明
  * @param {SguanFOC_System_STRUCT} *sguan
@@ -198,11 +198,6 @@ static void Transfer_PLL_Loop(PLL_STRUCT *pll,uint8_t mode,float input_Rad){
     PLL_Loop(pll);
     // 输出pll->go.OutWe;
     // 输出pll->go.OutRe;
-}
-
-// Offset读取编码器偏置
-static void Offset_EncoderRead(SguanFOC_System_STRUCT *sguan){
-    sguan->encoder.Pos_offset = User_Encoder_ReadRad();
 }
 
 // Current读取linked CurrentSense提供的三相物理电流(已滤波)
@@ -827,11 +822,19 @@ static void Sguan_GeneratePWM_Loop(SguanFOC_System_STRUCT *sguan){
         sguan->mode = Velocity_OPEN_MODE;
         Control_Tick[Velocity_OPEN_MODE](sguan);
     }
+    // Limit the final vector including feed-forward, not just the PI output.
+    float limit=sguan_foc_wrapper_voltage_limit();
+    float mag2=sguan->foc.Ud_in*sguan->foc.Ud_in+sguan->foc.Uq_in*sguan->foc.Uq_in;
+    if(mag2>limit*limit && limit>0) {
+        float scale=limit/sqrtf(mag2); sguan->foc.Ud_in*=scale; sguan->foc.Uq_in*=scale;
+    }
+    float bus=User_VBUS_DataGet();
+    if(bus<10 || bus>14) { sguan->foc.Ud_in=sguan->foc.Uq_in=0; bus=sguan->motor.VBUS; }
     SVPWM_Tick(sguan,
         sguan->foc.sine,        // sin正弦值给定
         sguan->foc.cosine,      // cos余弦值给定
-        sguan->foc.Ud_in/sguan->motor.VBUS,
-        sguan->foc.Uq_in/sguan->motor.VBUS);
+        sguan->foc.Ud_in/bus,
+        sguan->foc.Uq_in/bus);
 }
 
 // Sguan...Set系统时钟设置(定时器中断周期)
@@ -893,6 +896,14 @@ static void Sguan_PLL_Init(SguanFOC_System_STRUCT *sguan){
 }
 
 // Sguan...Tick系统开始的核心文件，主任务初始化函数
+static float Stationary_Encoder_Mean(void) {
+    float first=User_Encoder_ReadRad(),sum=0;
+    for(int n=0;n<32;n++) {
+        sum+=bemf_pll_wrap(User_Encoder_ReadRad()-first);
+        User_Delay(1);
+    }
+    return Value_normalize(first+sum/32);
+}
 static void Sguan_Start_Tick(void){
     if (Sguan.status == MOTOR_STATUS_UNINITIALIZED){
         // 用户自定义的电机参数和控制系统参数
@@ -914,13 +925,53 @@ static void Sguan_Start_Tick(void){
             return;
         }
         //电机回零操作
-        Sguan_Positioning_Set(&Sguan,0.1f*Sguan.motor.VBUS,0.0f);
+        float alignment=sguan_foc_wrapper_alignment_voltage();
+        float bus=User_VBUS_DataGet();
+        if(bus<10 || bus>14) { Sguan.status=MOTOR_STATUS_UNDERVOLTAGE; return; }
+        Sguan.motor.VBUS=bus;
+        Sguan_Positioning_Set(&Sguan,alignment,0.0f);
         User_Delay(1000);
-        // 读取角度偏置
-        Offset_EncoderRead(&Sguan);
+        // Infer encoder orientation from a slow positive electrical turn.
+        float start=Stationary_Encoder_Mean();
+        for(int n=1;n<=200;n++) {
+            if(Sguan.status>=MOTOR_STATUS_OVERVOLTAGE) return;
+            float sine,cosine; fast_sin_cos(6.28318530718f*n/200.0f,&sine,&cosine);
+            SVPWM_Tick(&Sguan,sine,cosine,alignment/bus,0);
+            User_Delay(10);
+        }
+        User_Delay(100);
+        float end=Stationary_Encoder_Mean();
+        float movement=end-start;
+        if(movement>3.14159265359f)movement-=6.28318530718f;
+        if(movement<-3.14159265359f)movement+=6.28318530718f;
+        pll_experiment.startup_encoder_delta_rad=movement;
+        if(fabsf(movement)<0.03f) {
+            Sguan_Positioning_Set(&Sguan,0,0); Sguan.status=MOTOR_STATUS_ENCODER_ERROR; return;
+        }
+        sguan_foc_wrapper_set_encoder_direction(movement>0?1:-1);
+        // Approach the same electrical zero from the opposite direction.
+        // Three commanded-field references reduce friction hysteresis and
+        // encoder position-dependent error without consulting the BEMF PLL.
+        for(int n=1;n<=200;n++) {
+            if(Sguan.status>=MOTOR_STATUS_OVERVOLTAGE) return;
+            float sine,cosine;fast_sin_cos(6.28318530718f*(1.0f-n/200.0f),&sine,&cosine);
+            SVPWM_Tick(&Sguan,sine,cosine,alignment/bus,0);User_Delay(10);
+        }
+        User_Delay(100);
+        float back=Stationary_Encoder_Mean();
+        pll_experiment.startup_reverse_delta_rad=bemf_pll_wrap(back-end);
+        float zero_start=bemf_pll_wrap((start-back)*Sguan.motor.Poles);
+        float zero_end=bemf_pll_wrap((end-back)*Sguan.motor.Poles);
+        pll_experiment.startup_zero_spread_rad=fmaxf(fabsf(zero_start),fabsf(zero_end));
+        if(pll_experiment.startup_zero_spread_rad>.30f ||
+           movement*pll_experiment.startup_reverse_delta_rad>=0) {
+            Sguan_Positioning_Set(&Sguan,0,0);Sguan.status=MOTOR_STATUS_ENCODER_ERROR;return;
+        }
+        Sguan.encoder.Pos_offset=Value_normalize(back+(zero_start+zero_end)/(3*Sguan.motor.Poles));
         // 电机失能并进入正常工作状态
         Sguan_Positioning_Set(&Sguan,0.0f,0.0f);
         User_Delay(800);
+        if(Sguan.status>=MOTOR_STATUS_OVERVOLTAGE) return;
         // 判断电机的极性,如果是SPMSM,D轴给定,可能停在0或者180度位置
         // 暂时还未书写
         //正常工作中(状态机运行)

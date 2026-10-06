@@ -31,12 +31,12 @@ void PID_Init(PID_STRUCT *pid){
     pid->run.Ref = 0;
     pid->run.Fbk = 0;
     pid->run.Output = 0;
+    pid->run.integral_frozen = 0;
 }
 
 // 闭环控制运算的定时器中断服务函数
 void PID_Loop(PID_STRUCT *pid){
     // 积分项冻结限幅的标志位
-    static uint8_t IntegralFrozen_flag = 0;
     // 更新历史输入和输出数值
     pid->run.i[1] = pid->run.i[0];
     pid->run.Io[1] = pid->run.Io[0];
@@ -45,7 +45,7 @@ void PID_Loop(PID_STRUCT *pid){
     pid->run.i[0] = pid->run.Ref - pid->run.Fbk;
     if (pid->Ki){
         // 判断是否需要冻结积分
-        if (IntegralFrozen_flag) {
+        if (pid->run.integral_frozen) {
             // 如果积分已冻结，保持上次的积分值
             pid->run.Io[0] = pid->run.Io[1];
             
@@ -54,7 +54,7 @@ void PID_Loop(PID_STRUCT *pid){
             // 情况2：积分值回到限幅范围内
             if ((pid->run.i[0] * pid->run.Io[0] < 0) ||  // 误差反向
                 (pid->run.Io[0] < pid->IntMax && pid->run.Io[0] > pid->IntMin)) {  // 回到范围内
-                IntegralFrozen_flag = 0;
+                pid->run.integral_frozen = 0;
             }
         } else {
             // 正常计算积分
@@ -64,11 +64,11 @@ void PID_Loop(PID_STRUCT *pid){
             // 检查是否达到限幅，达到则冻结积分
             if (pid->run.Io[0] > pid->IntMax) {
                 pid->run.Io[0] = pid->IntMax;
-                IntegralFrozen_flag = 1;
+                pid->run.integral_frozen = 1;
             }
             else if (pid->run.Io[0] < pid->IntMin) {
                 pid->run.Io[0] = pid->IntMin;
-                IntegralFrozen_flag = 1;
+                pid->run.integral_frozen = 1;
             }
         }
     }
@@ -79,4 +79,3 @@ void PID_Loop(PID_STRUCT *pid){
     pid->run.Output = pid->run.i[0]*pid->Kp + pid->run.Io[0] + pid->run.Do[0];
     pid->run.Output = Value_Limit(pid->run.Output,pid->OutMax,pid->OutMin);
 }
-

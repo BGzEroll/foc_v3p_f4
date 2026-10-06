@@ -3,6 +3,7 @@
 #include "drivers/foc/sensorless/pll_experiment.h"
 #include "third-parts/segger_rtt/SEGGER_RTT.h"
 #include "stm32f4xx_hal.h"
+#include <math.h>
 void pll_rtt_poll() {
     static bool initialized=false;
     static uint32_t previous=0;
@@ -18,9 +19,13 @@ void pll_rtt_poll() {
     int error=(int)(pll_experiment.angle_error*1000);
     unsigned lock=pll_experiment.estimator.locked,active=pll_experiment.active,fault=pll_experiment.fault;
     unsigned seq=pll_experiment.samples,period=pll_experiment.last_period_us;
+    int wref=(int)(pll_experiment.reference_speed*1000);
+    int iqcmd=(int)(pll_experiment.encoder_iq_command_a*1000);
+    float energy=pll_experiment.estimator.phase_error_energy;
     __set_PRIMASK(mask);
-    SEGGER_RTT_printf(0,"PLL ms=%u seq=%u dt_us=%u w_mrad_s=%d error_mrad=%d locked=%u active=%u fault=%u\n",
-        (unsigned)now,seq,period,w,error,lock,active,fault);
+    int phase_rms=(int)(sqrtf(fmaxf(energy,0))*1000);
+    SEGGER_RTT_printf(0,"PLL ms=%u seq=%u dt_us=%u w_mrad_s=%d ref_mrad_s=%d error_mrad=%d phase_rms_mrad=%d iq_cmd_mA=%d locked=%u active=%u fault=%u\n",
+        (unsigned)now,seq,period,w,wref,error,phase_rms,iqcmd,lock,active,fault);
 }
 #else
 void pll_rtt_poll() {}

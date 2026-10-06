@@ -24,6 +24,9 @@ uint8_t sguan_foc_wrapper_read_phase_currents(
 
 // 由 SguanFOC 初始化流程确认 CurrentSense 已完成零偏校准。
 uint8_t sguan_foc_wrapper_current_offset_prepared(void);
+float sguan_foc_wrapper_alignment_voltage(void);
+float sguan_foc_wrapper_voltage_limit(void);
+void sguan_foc_wrapper_set_encoder_direction(int8_t direction);
 
 #ifdef __cplusplus
 }

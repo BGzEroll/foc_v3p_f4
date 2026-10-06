@@ -8,6 +8,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "drivers/foc/sensorless/pll_experiment.h"
+#include <math.h>
 #ifdef PLL_ENABLE_RTT
 #include "debug/pll_rtt.h"
 #endif
@@ -31,14 +32,14 @@ static constexpr float CURRENT_AMPERE_PER_COUNT =
         CURRENT_SHUNT_RESISTANCE_OHM);
 
 static as5600_rotor_sensor rotor(AS5600_I2C_BUS_ID,
-    AS5600_I2C_ADDRESS);
+    AS5600_I2C_ADDRESS,true);
 static stm32_two_shunt_current_config current_sense_config{
     &hadc2,
     CURRENT_AMPERE_PER_COUNT,
     CURRENT_AMPERE_PER_COUNT,
     1,
     -1,
-    two_shunt_phase_mapping::AC
+    two_shunt_phase_mapping::AB
 };
 static stm32_two_shunt_current_sensor current_sense(current_sense_config);
 static sguan_foc_wrapper motor_instance;
@@ -161,6 +162,9 @@ static void sguan_task_entry(void *argument)
     }
 
     bool default_command_sent = false;
+    bool encoder_run_active=false;
+    uint32_t encoder_run_start_ms=0;
+    float running_iq_a=0;
     TickType_t last_wake_time = xTaskGetTickCount();
     while(true)
     {
@@ -170,8 +174,9 @@ static void sguan_task_entry(void *argument)
 #ifdef PLL_AUTO_RUN_ENCODER
             motor_instance.set_controller(
                 motion_control_type::TORQUE);
-            motor_instance.move(0.10f);
+            motor_instance.move(0.0f);
             motor_instance.enable();
+            encoder_run_active=true; encoder_run_start_ms=HAL_GetTick();
 #else
             motor_instance.disable();
 #endif
@@ -182,8 +187,34 @@ static void sguan_task_entry(void *argument)
             // This task owns start commands; the ISR owns trial/stop commands.
             pll_experiment.request = 0;
             motor_instance.set_controller(motion_control_type::TORQUE);
-            motor_instance.move(0.10f);
+            running_iq_a=0;
+            motor_instance.move(0.0f);
             motor_instance.enable();
+            encoder_run_active=true; encoder_run_start_ms=HAL_GetTick();
+        }
+        if(encoder_run_active && motor_instance.enabled()) {
+            // Same bounded commissioning approach as foc_test: a mild speed
+            // regulator avoids accelerating a constant-torque motor to the
+            // voltage ceiling. During a PLL trial this feedback is PLL speed.
+            float target=pll_experiment.encoder_target_speed_rad_s;
+            float limit=pll_experiment.encoder_current_limit_a;
+            if(!isfinite(target)||!isfinite(limit)||target<5 ||target>60 ||limit<0||limit>0.10f) {
+                pll_experiment.request=2;
+            } else {
+                float speed=motor_instance.snapshot().velocity_rad_s;
+                float desired=fminf(limit,fmaxf(0.0f,0.020f+0.002f*(target-speed)));
+                float change=fminf(0.0005f,fmaxf(-0.0005f,desired-running_iq_a));
+                running_iq_a+=change;motor_instance.move(running_iq_a);
+                pll_experiment.encoder_iq_command_a=running_iq_a;
+            }
+        }
+        // Task-owned stop also works when ADC is idle or faulted.
+        if(pll_experiment.request==2 ||
+            (encoder_run_active && !pll_experiment.active && HAL_GetTick()-encoder_run_start_ms>=8000)) {
+            uint32_t irq=__get_PRIMASK(); __disable_irq();
+            pll_experiment.fault=1; pll_experiment.request=0;
+            motor_instance.disable(); TIM8->BDTR &= ~TIM_BDTR_MOE;
+            __set_PRIMASK(irq); encoder_run_active=false;
         }
 #ifdef PLL_ENABLE_RTT
         pll_rtt_poll();

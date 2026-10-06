@@ -77,11 +77,18 @@ int bemf_pll_step(bemf_pll *s, float va, float vb, float ia, float ib) {
         if (!s->seeded) { s->angle_rad = phase; s->seeded = 1; }
         float predicted = bemf_pll_wrap(s->angle_rad+s->speed_rad_s*c->dt_s);
         s->phase_error_rad = bemf_pll_wrap(phase-predicted);
+        float energy_alpha=c->dt_s/(0.010f+c->dt_s);
+        s->phase_error_energy+=energy_alpha*(s->phase_error_rad*s->phase_error_rad-s->phase_error_energy);
         float candidate = s->speed_rad_s+s->pll_ki*c->dt_s*s->phase_error_rad;
         s->speed_rad_s = clamp(candidate, -c->max_speed_rad_s, c->max_speed_rad_s);
         s->angle_rad = bemf_pll_wrap(predicted+s->pll_kp*c->dt_s*s->phase_error_rad);
         s->valid = 1;
-        if (fabsf(s->phase_error_rad) < c->lock_error_rad &&
+        /* The detector sees ADC noise and EMF harmonics before the PLL filters
+         * them. A 10 ms RMS criterion prevents single small ripple peaks from
+         * restarting the entire hold timer. Gross phase excursions still clear
+         * lock immediately; encoder-relative transfer limits are unchanged. */
+        if (s->phase_error_energy < c->lock_error_rad*c->lock_error_rad &&
+            fabsf(s->phase_error_rad)<fminf(0.6f,3.0f*c->lock_error_rad) &&
             s->direction*s->speed_rad_s >= c->min_speed_rad_s && fabsf(candidate) < c->max_speed_rad_s) {
             if (s->good_samples < s->required_samples) s->good_samples++;
         } else s->good_samples = 0;
@@ -90,6 +97,7 @@ int bemf_pll_step(bemf_pll *s, float va, float vb, float ia, float ib) {
         /* Do not advertise a stale speed at zero/back-EMF dropout. */
         s->valid = s->locked = s->seeded = 0; s->good_samples = 0;
         s->speed_rad_s = 0; s->phase_error_rad = 0;
+        s->phase_error_energy = 0;
     }
     float ra = ia-s->current_hat_a, rb = ib-s->current_hat_b;
     float next_a = s->current_hat_a+c->dt_s*((va-c->resistance_ohm*s->current_hat_a-s->emf_state_a)/c->inductance_h+s->observer_k_i*ra);

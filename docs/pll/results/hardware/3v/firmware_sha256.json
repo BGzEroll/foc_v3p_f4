@@ -1,0 +1,165 @@
+[
+  {
+    "image": "3v_initial",
+    "record_prefixes": [
+      "3v_ab_aborted"
+    ],
+    "files": {
+      "3v_initial.elf": {
+        "sha256": "e5a1df8b2d26f31ca1ef4147152cb367727d4e99a4ad96d0e63b7ebc02ae8b09",
+        "bytes": 1984076
+      },
+      "3v_initial.bin": {
+        "sha256": "34fed79f64dc26637e8f9108b7bf001e3ba34da09f7c1f08da3c41c2a2a581d4",
+        "bytes": 66936
+      }
+    }
+  },
+  {
+    "image": "3v_low_current",
+    "record_prefixes": [
+      "3v_low_current"
+    ],
+    "files": {
+      "3v_low_current.elf": {
+        "sha256": "de0946f94dca84fd6e8e519eb4be7428ba2b7cc6d9582fb5cbbd7a0666654624",
+        "bytes": 1987416
+      },
+      "3v_low_current.bin": {
+        "sha256": "e468e0e5eef8c797e3fb4c8783c95d7498dc5e0e248ccc8202634ea2b57a4da3",
+        "bytes": 67660
+      }
+    }
+  },
+  {
+    "image": "3v_fast",
+    "record_prefixes": [
+      "3v_fast"
+    ],
+    "files": {
+      "3v_fast.elf": {
+        "sha256": "a176015507de7b90f5476d84cb87e4eb22c1db752bf0386f4112f6de81ef5f30",
+        "bytes": 1988460
+      },
+      "3v_fast.bin": {
+        "sha256": "d9685c8994da8e25e144f7f328ac4dc554522f0205286d6b1a95733e12ff00e9",
+        "bytes": 67956
+      }
+    }
+  },
+  {
+    "image": "3v_speed",
+    "record_prefixes": [
+      "3v_speed"
+    ],
+    "files": {
+      "3v_speed.elf": {
+        "sha256": "95fcb10ef7fb0b89cd82e747629a313756483934ef121ca9a63e6f097ff6b90f",
+        "bytes": 1997104
+      },
+      "3v_speed.bin": {
+        "sha256": "1035f688115ed5c13eb34c985a9080a0f56f4a7ea04acdb75c41a086ab291b23",
+        "bytes": 68580
+      }
+    }
+  },
+  {
+    "image": "3v_obs2000",
+    "record_prefixes": [
+      "3v_obs2000"
+    ],
+    "files": {
+      "3v_obs2000.elf": {
+        "sha256": "a02145e5f5f7753cf3ee9cac220b6616b9117fcad21ab148a695db511e1d4669",
+        "bytes": 1997120
+      },
+      "3v_obs2000.bin": {
+        "sha256": "eef21d9b5442282d6c5e6fc149cba0cd970539d2356d30652161bae4a19bbbd7",
+        "bytes": 68588
+      }
+    }
+  },
+  {
+    "image": "3v_rms30",
+    "record_prefixes": [
+      "3v_rms30"
+    ],
+    "files": {
+      "3v_rms30.elf": {
+        "sha256": "4d3ec5b86c90bd2bdf3c446549d0d67879ce1ac3907a525b2f952b62f3e09b44",
+        "bytes": 1997384
+      },
+      "3v_rms30.bin": {
+        "sha256": "dc17a7d89faa8140c5776df606e19dc5219dfb3bbd8735be54f3085a537d8348",
+        "bytes": 68652
+      }
+    }
+  },
+  {
+    "image": "3v_rms40",
+    "record_prefixes": [
+      "3v_rms40"
+    ],
+    "files": {
+      "3v_rms40.elf": {
+        "sha256": "7ee060ff39c79dd8738c371560038976310e6cdf64af94b8ed7fdb0c39d4524f",
+        "bytes": 1997520
+      },
+      "3v_rms40.bin": {
+        "sha256": "0036e09974cdb737051b881f79745ea3769dad928f1941b1f59f25e548ef8b96",
+        "bytes": 68668
+      }
+    }
+  },
+  {
+    "image": "3v_bidir40",
+    "record_prefixes": [
+      "3v_bidir_startup"
+    ],
+    "files": {
+      "3v_bidir40.elf": {
+        "sha256": "ee08de15e87602273a617c2b68514dda2f4b73c81c890173cecc64cd372de8c2",
+        "bytes": 1999084
+      },
+      "3v_bidir40.bin": {
+        "sha256": "f2a1d7d1baa870ae28e532a76edc50b9c6ab281206a5766f835b620d49f82744",
+        "bytes": 69004
+      }
+    }
+  },
+  {
+    "image": "3v_bidir_final",
+    "record_prefixes": [
+      "3v_warm_reset",
+      "3v_bidir40_final",
+      "3v_bidir50"
+    ],
+    "files": {
+      "3v_bidir_final.elf": {
+        "sha256": "cc7fe4effb43fd0e214218ce36078d6cef85fe9717bd185ad6083dd6aaeccd33",
+        "bytes": 2012216
+      },
+      "3v_bidir_final.bin": {
+        "sha256": "493b9373b0732abc72192062f912a27aecc75fbd5f414c13307ec9b195787761",
+        "bytes": 69224
+      }
+    }
+  },
+  {
+    "image": "3v_read_timing",
+    "record_prefixes": [
+      "3v_read_timing",
+      "3v_final_stop_status"
+    ],
+    "files": {
+      "3v_read_timing.elf": {
+        "sha256": "ee44f7f6b549ecf43cb8576e27eda12f85cb5f8f37acc09c0cf1e31c84816fec",
+        "bytes": 2012452
+      },
+      "3v_read_timing.bin": {
+        "sha256": "82a37128ee4f1c6c0ad9b72f790e968fec1f6d6ca113e452c5d05d999c323a01",
+        "bytes": 69240
+      }
+    }
+  }
+]

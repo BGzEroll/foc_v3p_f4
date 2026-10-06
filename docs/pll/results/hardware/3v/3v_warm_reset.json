@@ -1,0 +1,83 @@
+[
+  {
+    "reset_index": 1,
+    "rotor.sequence": 7175,
+    "rotor.error_count": 0,
+    "rotor.config_before": 768,
+    "rotor.config_after": 768,
+    "rotor.magnet_status": 179,
+    "rotor.magnet_agc": 128,
+    "rotor.magnet_magnitude": 1224,
+    "i2c_bus_debug[0].recovery_attempts": 52,
+    "i2c_bus_debug[0].recovery_failures": 0,
+    "motor_instance.state_": 3,
+    "Sguan.status": 6,
+    "pll_experiment.request": 0,
+    "pll_experiment.startup_encoder_delta_rad": -0.8989129066467285,
+    "pll_experiment.startup_reverse_delta_rad": 0.8974745273590088,
+    "pll_experiment.startup_zero_spread_rad": 0.010066986083984375,
+    "pll_experiment.startup_max_phase_a": 1.601511836051941,
+    "before_stop": {
+      "MOTOR_EN": false,
+      "TIM8_MOE": true
+    },
+    "after_stop": {
+      "MOTOR_EN": false,
+      "TIM8_MOE": false
+    }
+  },
+  {
+    "reset_index": 2,
+    "rotor.sequence": 7171,
+    "rotor.error_count": 2,
+    "rotor.config_before": 768,
+    "rotor.config_after": 768,
+    "rotor.magnet_status": 179,
+    "rotor.magnet_agc": 128,
+    "rotor.magnet_magnitude": 1222,
+    "i2c_bus_debug[0].recovery_attempts": 56,
+    "i2c_bus_debug[0].recovery_failures": 2,
+    "motor_instance.state_": 3,
+    "Sguan.status": 6,
+    "pll_experiment.request": 0,
+    "pll_experiment.startup_encoder_delta_rad": -0.8990093469619751,
+    "pll_experiment.startup_reverse_delta_rad": 0.8975222110748291,
+    "pll_experiment.startup_zero_spread_rad": 0.010410785675048828,
+    "pll_experiment.startup_max_phase_a": 1.598271369934082,
+    "before_stop": {
+      "MOTOR_EN": false,
+      "TIM8_MOE": true
+    },
+    "after_stop": {
+      "MOTOR_EN": false,
+      "TIM8_MOE": false
+    }
+  },
+  {
+    "reset_index": 3,
+    "rotor.sequence": 7173,
+    "rotor.error_count": 1,
+    "rotor.config_before": 768,
+    "rotor.config_after": 768,
+    "rotor.magnet_status": 179,
+    "rotor.magnet_agc": 128,
+    "rotor.magnet_magnitude": 1223,
+    "i2c_bus_debug[0].recovery_attempts": 55,
+    "i2c_bus_debug[0].recovery_failures": 1,
+    "motor_instance.state_": 3,
+    "Sguan.status": 6,
+    "pll_experiment.request": 0,
+    "pll_experiment.startup_encoder_delta_rad": -0.8988163471221924,
+    "pll_experiment.startup_reverse_delta_rad": 0.8975222110748291,
+    "pll_experiment.startup_zero_spread_rad": 0.009058952331542969,
+    "pll_experiment.startup_max_phase_a": 1.5984504222869873,
+    "before_stop": {
+      "MOTOR_EN": false,
+      "TIM8_MOE": true
+    },
+    "after_stop": {
+      "MOTOR_EN": false,
+      "TIM8_MOE": false
+    }
+  }
+]
