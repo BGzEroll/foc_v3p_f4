@@ -1,0 +1,20 @@
+Internal ctest changing into directory: /home/bgzerol/embedded_project/foc_v3p/build/tests-pll
+Test project /home/bgzerol/embedded_project/foc_v3p/build/tests-pll
+    Start 1: sensorless_pll
+1/7 Test #1: sensorless_pll ....................   Passed    0.02 sec
+    Start 2: sensorless_trial_guard
+2/7 Test #2: sensorless_trial_guard ............   Passed    0.04 sec
+    Start 3: i2c_warm_reset_bus_clear
+3/7 Test #3: i2c_warm_reset_bus_clear ..........   Passed    0.00 sec
+    Start 4: svpwm_physical_voltage
+4/7 Test #4: svpwm_physical_voltage ............   Passed    0.00 sec
+    Start 5: independent_current_pi_axes
+5/7 Test #5: independent_current_pi_axes .......   Passed    0.00 sec
+    Start 6: direct_sensorless_startup
+6/7 Test #6: direct_sensorless_startup .........   Passed    0.00 sec
+    Start 7: adc_offset_and_cb_phase_mapping
+7/7 Test #7: adc_offset_and_cb_phase_mapping ...   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 7
+
+Total Test time (real) =   0.06 sec

@@ -112,7 +112,11 @@ foc_result sguan_foc_wrapper::init(const sguan_foc_config &config)
         return last_result_;
     }
 
-    if(sensor_ == nullptr || current_sense_ == nullptr)
+    if(current_sense_ == nullptr
+#ifndef PLL_DIRECT_SENSORLESS
+       || sensor_ == nullptr
+#endif
+    )
     {
         last_result_ = foc_result::NOT_LINKED;
         return last_result_;
@@ -160,12 +164,15 @@ foc_result sguan_foc_wrapper::init(const sguan_foc_config &config)
         return last_result_;
     }
 
-    foc_result result = sensor_->init();
+    foc_result result = foc_result::OK;
+#ifndef PLL_DIRECT_SENSORLESS
+    result = sensor_->init();
     if(result != foc_result::OK)
     {
         last_result_ = result;
         return result;
     }
+#endif
 
     result = current_sense_->init();
     if(result != foc_result::OK)
@@ -209,7 +216,11 @@ foc_result sguan_foc_wrapper::init_foc()
         return foc_result::NOT_INITIALIZED;
     }
 
-    if(sensor_ == nullptr || current_sense_ == nullptr)
+    if(current_sense_ == nullptr
+#ifndef PLL_DIRECT_SENSORLESS
+       || sensor_ == nullptr
+#endif
+    )
     {
         last_result_ = foc_result::NOT_LINKED;
         state_ = sguan_foc_state::FAULT;
@@ -611,7 +622,7 @@ sguan_foc_config sguan_foc_wrapper::default_config()
     sguan_foc_config config{};
 
     config.motor.pole_pairs = 7;
-    config.motor.resistance_ohm = 2.55f;
+    config.motor.resistance_ohm = 3.53f;
     config.motor.ld_h = 0.00086f;
     config.motor.lq_h = 0.00086f;
     config.motor.ls_h = 0.00086f;
@@ -682,6 +693,10 @@ void sguan_foc_wrapper::loop_foc()
     }
     if(state_ == sguan_foc_state::FAULT)
     {
+        if(pll_experiment.direct_mode){
+            pll_startup_stop(&pll_experiment.startup,PLL_START_HARDWARE);
+            pll_experiment.fault=1;pll_experiment.active=0;
+        }
         MOTOR_EN_GPIO_Port->BSRR=(uint32_t)MOTOR_EN_Pin<<16;
         TIM8->BDTR &= ~TIM_BDTR_MOE;
         return;
@@ -708,6 +723,10 @@ void sguan_foc_wrapper::loop_foc()
 
     uint32_t loop_start_cycles = DWT->CYCCNT;
     SguanFOC_High_Loop();
+    if(pll_experiment.direct_mode && output_enabled_){
+        float peak=fmaxf(fabsf(Sguan.current.Real_Ia),fmaxf(fabsf(Sguan.current.Real_Ib),fabsf(Sguan.current.Real_Ic)));
+        if(peak>pll_experiment.startup.max_phase_a)pll_experiment.startup.max_phase_a=peak;
+    }
     if(output_enabled_ && (fabsf(Sguan.current.Real_Ia)>config_.max_phase_current_a ||
         fabsf(Sguan.current.Real_Ib)>config_.max_phase_current_a || fabsf(Sguan.current.Real_Ic)>config_.max_phase_current_a)) {
         current_fault_=true; state_=sguan_foc_state::FAULT; output_enabled_=false;
@@ -733,9 +752,12 @@ void sguan_foc_wrapper::loop_foc()
         if(reference_available &&
             reference.valid && now_us-reference.timestamp_us < ROTOR_HARD_TIMEOUT_US)
         {
+            if(pll_experiment.direct_mode && pll_experiment.startup.state==PLL_START_ALIGN)
+                pll_experiment.diagnostic_encoder_zero_rad=reference.mechanical_angle_rad;
             float mech = reference.mechanical_angle_rad + reference.mechanical_velocity_rad_s *
                 (float)(now_us-reference.timestamp_us)*1e-6f;
-            reference_angle = Value_normalize((mech-Sguan.encoder.Pos_offset)*
+            float zero=pll_experiment.direct_mode?pll_experiment.diagnostic_encoder_zero_rad:Sguan.encoder.Pos_offset;
+            reference_angle = Value_normalize((mech-zero)*
                 config_.motor.encoder_direction*config_.motor.pole_pairs);
             reference_speed = reference.mechanical_velocity_rad_s*
                 config_.motor.encoder_direction*config_.motor.pole_pairs;
@@ -753,6 +775,10 @@ void sguan_foc_wrapper::loop_foc()
         uint32_t step_start_cycles=DWT->CYCCNT;
         pll_experiment_step(va,vb,Sguan.current.Real_Ialpha,Sguan.current.Real_Ibeta,
             reference_angle,reference_speed,bus,now_us);
+        if(pll_experiment.direct_mode){
+            float peak=fmaxf(fabsf(Sguan.current.Real_Ia),fmaxf(fabsf(Sguan.current.Real_Ib),fabsf(Sguan.current.Real_Ic)));
+            if(peak>pll_experiment.startup.max_phase_a)pll_experiment.startup.max_phase_a=peak;
+        }
         uint32_t step_cycles=DWT->CYCCNT-step_start_cycles;
         if(step_cycles>pll_experiment.max_step_cycles) pll_experiment.max_step_cycles=step_cycles;
         if(pll_experiment.fault)
@@ -768,6 +794,10 @@ void sguan_foc_wrapper::loop_foc()
     if(loop_cycles>pll_experiment.max_loop_cycles) pll_experiment.max_loop_cycles=loop_cycles;
     if(state_ == sguan_foc_state::FAULT)
     {
+        if(pll_experiment.direct_mode){
+            pll_startup_stop(&pll_experiment.startup,PLL_START_HARDWARE);
+            pll_experiment.fault=1;pll_experiment.active=0;
+        }
         MOTOR_EN_GPIO_Port->BSRR=(uint32_t)MOTOR_EN_Pin<<16;
         TIM8->BDTR &= ~TIM_BDTR_MOE;
     }
@@ -885,8 +915,8 @@ void sguan_foc_wrapper::apply_command_to_backend()
     Sguan.mode = backend_mode;
     if(output_allowed)
     {
-        Sguan.foc.Target_Id = command_.target_id_a;
-        Sguan.foc.Target_Iq = command_.target_iq_a;
+        Sguan.foc.Target_Id = pll_experiment.direct_mode?pll_experiment.startup.target_id:command_.target_id_a;
+        Sguan.foc.Target_Iq = pll_experiment.direct_mode?pll_experiment.startup.target_iq:command_.target_iq_a;
         Sguan.foc.Target_Speed = command_.target_velocity_rad_s;
         Sguan.foc.Target_Pos = command_.target_position_rad;
     }

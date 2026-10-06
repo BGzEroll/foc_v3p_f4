@@ -8,6 +8,7 @@
 /scripts/pll/results/L_plus20pct.csv
 /scripts/pll/results/low_speed.csv
 /scripts/pll/results/emf_loss.csv
+/scripts/pll/results/direct_start_simulation.csv
 *.slxc
 slprj/
 __pycache__/

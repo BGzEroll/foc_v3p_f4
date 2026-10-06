@@ -37,13 +37,15 @@ static stm32_two_shunt_current_config current_sense_config{
     &hadc2,
     CURRENT_AMPERE_PER_COUNT,
     CURRENT_AMPERE_PER_COUNT,
-    1,
     -1,
-    two_shunt_phase_mapping::AB
+    -1,
+    two_shunt_phase_mapping::CB // Static vectors identify ADC0=-C, ADC1=B before this sign fix.
 };
 static stm32_two_shunt_current_sensor current_sense(current_sense_config);
 static sguan_foc_wrapper motor_instance;
 static volatile bool rotor_ready = false;
+// Diagnostics only in the direct build. Turning this off freezes AS5600 sampling.
+volatile uint32_t pll_encoder_diagnostics_enabled=1;
 
 /**
  * @brief 启动母线电压连续采样
@@ -127,7 +129,7 @@ static void foc_sensor_task_entry(void *argument)
     TickType_t last_wake_time = xTaskGetTickCount();
     while(true)
     {
-        rotor.update_task();
+        if(pll_encoder_diagnostics_enabled)rotor.update_task();
         vTaskDelayUntil(&last_wake_time,
             pdMS_TO_TICKS(FOC_SENSOR_UPDATE_PERIOD_MS));
     }
@@ -143,10 +145,12 @@ static void foc_sensor_task_entry(void *argument)
  */
 static void sguan_task_entry(void *argument)
 {
+#ifndef PLL_DIRECT_SENSORLESS
     while(!rotor_ready)
     {
         vTaskDelay(pdMS_TO_TICKS(1));
     }
+#endif
 
     sguan_foc_config config = sguan_foc_wrapper::default_config();
     if(motor_instance.init(config) != foc_result::OK)
@@ -165,10 +169,23 @@ static void sguan_task_entry(void *argument)
     bool encoder_run_active=false;
     uint32_t encoder_run_start_ms=0;
     float running_iq_a=0;
+    bool direct_run_active=false;
+    uint32_t direct_run_start_ms=0;
     TickType_t last_wake_time = xTaskGetTickCount();
     while(true)
     {
         motor_instance.service();
+        if(default_command_sent && pll_experiment.direct_mode && (pll_experiment.request==4 || pll_experiment.request==5) && motor_instance.ready() && !pll_experiment.fault){
+            uint32_t irq=__get_PRIMASK();__disable_irq();
+            bool static_scan=pll_experiment.request==5;
+            pll_experiment.request=0;pll_experiment.samples=0;
+            bemf_pll_reset(&pll_experiment.estimator,1);
+            pll_startup_begin(&pll_experiment.startup);
+            pll_experiment.startup.static_scan=static_scan;
+            motor_instance.set_current_dq(0,0);motor_instance.enable();
+            direct_run_active=true;direct_run_start_ms=HAL_GetTick();
+            __set_PRIMASK(irq);
+        }
         if(motor_instance.ready() && !default_command_sent)
         {
 #ifdef PLL_AUTO_RUN_ENCODER
@@ -182,7 +199,7 @@ static void sguan_task_entry(void *argument)
 #endif
             default_command_sent = true;
         }
-        if(pll_experiment.request == 3 && motor_instance.ready() && !pll_experiment.fault)
+        if(!pll_experiment.direct_mode && pll_experiment.request == 3 && motor_instance.ready() && !pll_experiment.fault)
         {
             // This task owns start commands; the ISR owns trial/stop commands.
             pll_experiment.request = 0;
@@ -210,11 +227,14 @@ static void sguan_task_entry(void *argument)
         }
         // Task-owned stop also works when ADC is idle or faulted.
         if(pll_experiment.request==2 ||
+            (direct_run_active && HAL_GetTick()-direct_run_start_ms>=18000) ||
             (encoder_run_active && !pll_experiment.active && HAL_GetTick()-encoder_run_start_ms>=8000)) {
             uint32_t irq=__get_PRIMASK(); __disable_irq();
             pll_experiment.fault=1; pll_experiment.request=0;
+            if(pll_experiment.direct_mode)pll_startup_stop(&pll_experiment.startup,PLL_START_STOP);
             motor_instance.disable(); TIM8->BDTR &= ~TIM_BDTR_MOE;
             __set_PRIMASK(irq); encoder_run_active=false;
+            direct_run_active=false;
         }
 #ifdef PLL_ENABLE_RTT
         pll_rtt_poll();

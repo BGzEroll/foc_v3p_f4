@@ -1,0 +1,93 @@
+[
+  {
+    "image": "before_direct",
+    "files": {
+      "before_direct.elf": {
+        "sha256": "ee44f7f6b549ecf43cb8576e27eda12f85cb5f8f37acc09c0cf1e31c84816fec",
+        "bytes": 2012452
+      },
+      "before_direct.bin": {
+        "sha256": "82a37128ee4f1c6c0ad9b72f790e968fec1f6d6ca113e452c5d05d999c323a01",
+        "bytes": 69240
+      }
+    }
+  },
+  {
+    "image": "direct_01",
+    "files": {
+      "direct_01.elf": {
+        "sha256": "62f83b5921bf24d7fdc3e53dc4eb12202372010eedae45ae0e1f3c6a94f4a60c",
+        "bytes": 2020464
+      },
+      "direct_01.bin": {
+        "sha256": "1ef7dae3ed4967791dcd2197c0e6cbe3450e6baf4e2545d620bc358ef094c0b8",
+        "bytes": 70308
+      }
+    }
+  },
+  {
+    "image": "static_vectors_01",
+    "files": {
+      "static_vectors_01.elf": {
+        "sha256": "5cf93531abac7bdd936268523bdca8826c451c15248af148964f6f88dc4ec9a3",
+        "bytes": 2021680
+      },
+      "static_vectors_01.bin": {
+        "sha256": "ef7a86fdb218879fbbaaf8ea7ad67e7b23bc37e3f802e6f8c7dd0e3762fbd338",
+        "bytes": 70492
+      }
+    }
+  },
+  {
+    "image": "static_vectors_02",
+    "files": {
+      "static_vectors_02.elf": {
+        "sha256": "89ad433594ed58d53bb5121430bbe052e0868d7cd0326ef21edf4cc21a129b4a",
+        "bytes": 2021976
+      },
+      "static_vectors_02.bin": {
+        "sha256": "8cb158ea6f1f952edfe77f54593ada866a789000fe8a1db98c2b8eafcf2c6761",
+        "bytes": 70580
+      }
+    }
+  },
+  {
+    "image": "direct_02",
+    "files": {
+      "direct_02.elf": {
+        "sha256": "89ad433594ed58d53bb5121430bbe052e0868d7cd0326ef21edf4cc21a129b4a",
+        "bytes": 2021976
+      },
+      "direct_02.bin": {
+        "sha256": "8cb158ea6f1f952edfe77f54593ada866a789000fe8a1db98c2b8eafcf2c6761",
+        "bytes": 70580
+      }
+    }
+  },
+  {
+    "image": "direct_03",
+    "files": {
+      "direct_03.elf": {
+        "sha256": "57e5977caf17de6b7769397557db0c1fa073c4a0de687d7cdc73293b1bc70a60",
+        "bytes": 2022656
+      },
+      "direct_03.bin": {
+        "sha256": "9c4051ceac14d946b118a464a58603963c535ccca7e5ed2c6517f4ca5cbc2ba9",
+        "bytes": 70728
+      }
+    }
+  },
+  {
+    "image": "direct_04",
+    "files": {
+      "direct_04.elf": {
+        "sha256": "57e5977caf17de6b7769397557db0c1fa073c4a0de687d7cdc73293b1bc70a60",
+        "bytes": 2022656
+      },
+      "direct_04.bin": {
+        "sha256": "9c4051ceac14d946b118a464a58603963c535ccca7e5ed2c6517f4ca5cbc2ba9",
+        "bytes": 70728
+      }
+    }
+  }
+]

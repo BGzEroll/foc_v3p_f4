@@ -13,7 +13,7 @@ p.add_argument('--output',required=True)
 p.add_argument('--speed',type=float,default=40,help='Mechanical target rad/s, 5..60')
 args=p.parse_args()
 base=pathlib.Path(args.output);base.parent.mkdir(parents=True,exist_ok=True)
-fields=['pll_experiment.request','pll_experiment.capture_request',
+fields=['pll_experiment.direct_mode','pll_experiment.request','pll_experiment.capture_request',
     'pll_experiment.capture_count','pll_experiment.capture',
     'pll_experiment.samples','pll_experiment.fault','pll_experiment.active',
     'pll_experiment.switch_good','pll_experiment.max_loop_cycles',
@@ -55,6 +55,9 @@ def snapshot():
     d['TIM8_MOE']=bool(int(tcl('read_memory 0x40010444 32 1').strip(),0)&32768)
     return d
 check_image(tcl,args.elf)
+if read('pll_experiment.direct_mode'):
+    s.close()
+    raise RuntimeError('Direct firmware: use run_direct_case.py instead of the encoder baseline')
 if read('motor_instance.state_')!=3 or read('pll_experiment.fault'):
     raise RuntimeError('Board is not ready; reset/flash and inspect startup first')
 headers='time_s,v_alpha_v,v_beta_v,i_alpha_a,i_beta_a,encoder_angle_rad,encoder_speed_rad_s,pll_angle_rad,pll_speed_rad_s,emf_alpha_v,emf_beta_v,phase_error_rad,locked,active,bus_voltage_v,angle_error_rad'.split(',')

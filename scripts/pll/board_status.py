@@ -34,9 +34,17 @@ fields=[('motor_instance.state_',8,'B'),('motor_instance.last_result_',8,'B'),
  ('Sguan.encoder.Real_Espeed',32,'f'),('Sguan.current.Real_Id',32,'f'),('Sguan.current.Real_Iq',32,'f'),
  ('Sguan.foc.Real_VBUS',32,'f')]
 data={}
-for expr,width,fmt in fields:
-    out=subprocess.check_output(['gdb-multiarch','-q','-batch',args.elf,'-ex',f'p/x &{expr}'],text=True)
-    addr=int(re.search(r'= (0x[0-9a-f]+)',out).group(1),16)
+fields += [('pll_experiment.direct_mode',32,'I'),('pll_encoder_diagnostics_enabled',32,'I'),
+ ('pll_experiment.startup.state',32,'I'),('pll_experiment.startup.reason',32,'I'),
+ ('pll_experiment.startup.closed_ticks',32,'I'),('pll_experiment.startup.max_phase_a',32,'f'),
+ ('pll_experiment.estimator.config.resistance_ohm',32,'f'),
+ ('current_sense.config.phase_mapping',8,'B'),('current_sense.config.direction_a',8,'b'),('current_sense.config.direction_b',8,'b')]
+gdb=['gdb-multiarch','-q','-batch',args.elf]
+for expr,_,_ in fields:gdb += ['-ex',f'p/x &{expr}']
+addresses=re.findall(r'= (0x[0-9a-f]+)',subprocess.check_output(gdb,text=True))
+if len(addresses)!=len(fields):raise RuntimeError('Cannot resolve diagnostic symbols')
+for (expr,width,fmt),address in zip(fields,addresses):
+    addr=int(address,16)
     value=int(tcl(f'read_memory {addr} {width} 1').strip(),0)
     data[expr]=struct.unpack('<'+fmt,value.to_bytes(width//8,'little'))[0]
 data['TIM5_CNT']=int(tcl('read_memory 0x40000c24 32 1').strip(),0)

@@ -591,7 +591,10 @@ static void Status_Switch_Loop(SguanFOC_System_STRUCT *sguan){
         }
     }
     // 3.过流保护
-    if ((sguan->status != MOTOR_STATUS_OVERCURRENT) &&
+    int direct_alignment=pll_experiment.direct_mode &&
+        (pll_experiment.startup.state==PLL_START_ALIGN ||
+         (pll_experiment.startup.state==PLL_START_RAMP && pll_experiment.startup.stage_ticks<2000));
+    if (!direct_alignment && (sguan->status != MOTOR_STATUS_OVERCURRENT) &&
         ((Value_fabsf(sguan->current.Real_Id) > sguan->safe.Dcur_MAX) ||
         (Value_fabsf(sguan->current.Real_Iq) > sguan->safe.Qcur_MAX))){
         sguan->status = MOTOR_STATUS_OVERCURRENT;
@@ -815,7 +818,11 @@ static void Sguan_GeneratePWM_Loop(SguanFOC_System_STRUCT *sguan){
     // 用户实时控制的参数传入
     User_UserControl();
     // PID运算PWM大小并执行
-    if (sguan->mode < 4){
+    if(pll_experiment.direct_mode && pll_experiment.startup.state==PLL_START_ALIGN){
+        // Fixed-field alignment; absolute phase-current protection remains in ISR.
+        PID_Init(&sguan->control.Current_D);PID_Init(&sguan->control.Current_Q);
+        sguan->foc.Ud_in=sguan_foc_wrapper_alignment_voltage();sguan->foc.Uq_in=0;
+    } else if (sguan->mode < 4){
         Control_Tick[sguan->mode](sguan);
     } else{
         // 错误处理：自动跳转到默认速度开环模式
@@ -924,6 +931,12 @@ static void Sguan_Start_Tick(void){
             Sguan.status = MOTOR_STATUS_SENSOR_ERROR;
             return;
         }
+#ifdef PLL_DIRECT_SENSORLESS
+        // No encoder calibration and no unsolicited motor motion at boot.
+        Sguan.encoder.Pos_offset=0;
+        Sguan.status=MOTOR_STATUS_IDLE;
+        return;
+#endif
         //电机回零操作
         float alignment=sguan_foc_wrapper_alignment_voltage();
         float bus=User_VBUS_DataGet();

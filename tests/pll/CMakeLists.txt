@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
-project(sensorless_pll_tests C)
+project(sensorless_pll_tests C CXX)
+set(CMAKE_CXX_STANDARD 17)
 enable_testing()
 set(CMAKE_C_STANDARD 11)
 add_executable(pll_test pll_test.c ../../user_lib/drivers/foc/sensorless/bemf_pll.c)
@@ -8,6 +9,7 @@ target_compile_options(pll_test PRIVATE -Wall -Wextra -Werror)
 target_link_libraries(pll_test m)
 add_test(NAME sensorless_pll COMMAND pll_test)
 add_executable(pll_experiment_test pll_experiment_test.c
+    ../../user_lib/drivers/foc/sensorless/pll_startup.c
     ../../user_lib/drivers/foc/sensorless/bemf_pll.c
     ../../user_lib/drivers/foc/sensorless/pll_experiment.c)
 target_include_directories(pll_experiment_test PRIVATE ../../user_lib/drivers/foc/sensorless)
@@ -30,3 +32,17 @@ target_include_directories(pid_axes_test PRIVATE ../../user_lib/third-parts/Sgua
 target_compile_options(pid_axes_test PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
 target_link_libraries(pid_axes_test m)
 add_test(NAME independent_current_pi_axes COMMAND pid_axes_test)
+add_executable(pll_startup_test pll_startup_test.c
+    ../../user_lib/drivers/foc/sensorless/pll_startup.c
+    ../../user_lib/drivers/foc/sensorless/pll_experiment.c
+    ../../user_lib/drivers/foc/sensorless/bemf_pll.c)
+target_compile_definitions(pll_startup_test PRIVATE PLL_DIRECT_SENSORLESS)
+target_include_directories(pll_startup_test PRIVATE ../../user_lib/drivers/foc/sensorless)
+target_compile_options(pll_startup_test PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(pll_startup_test m)
+add_test(NAME direct_sensorless_startup COMMAND pll_startup_test)
+add_executable(current_mapping_test current_mapping_test.cpp
+    ../../user_lib/drivers/foc/sensors/current_sense/stm32_two_shunt_current_sensor.cpp)
+target_include_directories(current_mapping_test PRIVATE stubs)
+target_compile_options(current_mapping_test PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
+add_test(NAME adc_offset_and_cb_phase_mapping COMMAND current_mapping_test)

@@ -33,12 +33,16 @@ message("Build type: " ${CMAKE_BUILD_TYPE})
 option(PLL_KEEP_DEBUG_SYMBOLS "Retain symbols in the optimized PLL experiment firmware" OFF)
 option(PLL_ENABLE_RTT "Enable nonblocking 10 Hz PLL RTT diagnostics" OFF)
 option(PLL_AUTO_RUN_ENCODER "Auto-run the 0.10 A encoder baseline after alignment" OFF)
+option(PLL_DIRECT_SENSORLESS "Start without encoder feedback using I/F then BEMF PLL" OFF)
 
 # Enable CMake support for ASM, C and C++ languages
 enable_language(C ASM CXX)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
+if(PLL_DIRECT_SENSORLESS)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE PLL_DIRECT_SENSORLESS)
+endif()
 if(PLL_KEEP_DEBUG_SYMBOLS)
     target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE -O2 -g3)
 endif()

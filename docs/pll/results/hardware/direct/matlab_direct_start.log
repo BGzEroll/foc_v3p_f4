@@ -1,0 +1,4 @@
+[警告: 您使用的是不受支持的 MinGW 编译器版本。要安装支持的 MinGW 编译器版本，请访问 https://www.mathworks.com/help/matlab/matlab_external/install-mingw-support-package.html。
+ 有关当前支持的编译器的列表，请参阅: https://www.mathworks.com/support/compilers。]
+[> 位置：run_direct_start_simulation (第 15 行)]
+PASS: ideal direct startup; closed 8.101 s; error RMS 0.01329 rad; phase peak 0.914 A

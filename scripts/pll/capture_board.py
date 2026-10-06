@@ -40,6 +40,10 @@ def write_field(name,value):
 # Check the whole programmed image BEFORE any RAM writes. A different build can
 # put globals at different addresses even when the C structures look identical.
 check_image(tcl,args.elf)
+direct=int(tcl(f'read_memory {addr+field_offset("direct_mode")} 32 1').strip(),0)
+if direct and (args.mapping is not None or args.start_encoder or args.request_switch):
+    sock.close()
+    raise RuntimeError('Direct firmware: use run_direct_case.py; encoder/shadow mapping actions are disabled')
 if args.mapping is not None:
     active=int(tcl(f'read_memory {addr+field_offset("active")} 32 1').strip(),0)
     if active: raise RuntimeError('Cannot change observer mapping during an active sensorless trial')

@@ -32,6 +32,7 @@
                 "PLL_KEEP_DEBUG_SYMBOLS": "ON",
                 "PLL_ENABLE_RTT": "ON",
                 "PLL_AUTO_RUN_ENCODER": "OFF",
+                "PLL_DIRECT_SENSORLESS": "ON",
                 "CMAKE_C_FLAGS_RELEASE": "-O2 -g3",
                 "CMAKE_CXX_FLAGS_RELEASE": "-O2 -g3"
             }

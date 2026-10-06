@@ -9,6 +9,7 @@ enum class two_shunt_phase_mapping : uint8_t
     AB = 0,
     AC,
     BC,
+    CB,
 };
 
 struct stm32_two_shunt_current_config

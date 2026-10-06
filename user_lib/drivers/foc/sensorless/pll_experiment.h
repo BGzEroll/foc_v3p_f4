@@ -1,6 +1,7 @@
 #ifndef PLL_EXPERIMENT_H
 #define PLL_EXPERIMENT_H
 #include "bemf_pll.h"
+#include "pll_startup.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -20,6 +21,10 @@ typedef struct {
     float startup_encoder_delta_rad, startup_max_phase_a;
     float startup_reverse_delta_rad, startup_zero_spread_rad;
     float encoder_target_speed_rad_s, encoder_current_limit_a, encoder_iq_command_a;
+    uint32_t direct_mode;
+    uint32_t capture_stride;
+    pll_startup startup;
+    float diagnostic_encoder_zero_rad;
     bemf_pll estimator;
     float capture[512][16];
 } pll_experiment_state;

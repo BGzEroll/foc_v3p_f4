@@ -34,7 +34,8 @@ foc_result stm32_two_shunt_current_sensor::init()
         (config.direction_b != 1 && config.direction_b != -1) ||
         (config.phase_mapping != two_shunt_phase_mapping::AB &&
             config.phase_mapping != two_shunt_phase_mapping::AC &&
-            config.phase_mapping != two_shunt_phase_mapping::BC))
+            config.phase_mapping != two_shunt_phase_mapping::BC &&
+            config.phase_mapping != two_shunt_phase_mapping::CB))
     {
         return foc_result::INVALID_CONFIG;
     }
@@ -168,6 +169,11 @@ foc_result stm32_two_shunt_current_sensor::read_conversion_from_isr(
             sample.current_a = reconstructed_current;
             sample.current_b = current_0;
             sample.current_c = current_1;
+            break;
+        case two_shunt_phase_mapping::CB:
+            sample.current_a = reconstructed_current;
+            sample.current_b = current_1;
+            sample.current_c = current_0;
             break;
         default:
             sample.current_a = 0.0f;
