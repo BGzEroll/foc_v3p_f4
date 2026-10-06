@@ -1,0 +1,17 @@
+{
+  "CMakeLists.txt": "10c43e2d4854cd8c50099986914a6e0e968ea41ab45fc035dc7b8fdb52007da0",
+  "CMakePresets.json": "a4c89dd720d7e9802a3f52a7e207aea88d4f0d665c9dbd10e27bcce4f8055ec1",
+  "user_lib/devices/foc_dev.cpp": "6396c59e02eae04c6f228ce63f47b6156157267fec6639677cd233d040515e17",
+  "user_lib/third-parts/SguanFOC/SguanFOC.c": "229fa21200ae6c52f555912d3b03236df140cc78422eb4fa047ef1c6986ea32b",
+  "user_lib/third-parts/SguanFOC/wrapper/sguan_foc_wrapper.cpp": "719e72d6b5555d008a2bdaf4f4528e47a072dc23e231307aab3a65eafaa8ff27",
+  "user_lib/drivers/foc/sensorless/bemf_pll.c": "bd5e3ca97b85fc47b2e127285c9be4bd07e5b736ca4890e996008ae4a2972d3f",
+  "user_lib/drivers/foc/sensorless/bemf_pll.h": "7dfed0e0910bb9046580c9ad6f96c8937d023c661e20affe77a0a1d80a0e8943",
+  "user_lib/drivers/foc/sensorless/pll_experiment.c": "8fd21b6e7f266fdcc09d7019d03da3c39ed99dce399dabfd6e5233f6019f7ebe",
+  "user_lib/drivers/foc/sensorless/pll_experiment.h": "538cf9870f29202b4b16aabd3c5cb85437ac3691f1539b5e03ff622cbdc763e0",
+  "user_lib/debug/pll_rtt.cpp": "a57b5e88ed33e9f8e28ebaa2fa0ee0718cd1527cbdf0d28e31ddfae3d4e61b6d",
+  "user_lib/debug/pll_rtt.h": "e8155f42cec9dbb02270d05ca312dc49045ed77c5cf9dc134e076715d68d1acb",
+  "user_lib/third-parts/segger_rtt/SEGGER_RTT.c": "794f23fcb5bbc0a368777cd6324be794c3dc3bf734a2b15330cefc660706896d",
+  "user_lib/third-parts/segger_rtt/SEGGER_RTT.h": "45a46d7ec529b6059bc88ae6d115f101081b74bfe9c1d18ad4c0a6221fee5cbe",
+  "user_lib/third-parts/segger_rtt/SEGGER_RTT_Conf.h": "ec2a1529a36f38a71daaee37a586a3214bbf021dd7f37215fdf5d3aff1e46f4d",
+  "user_lib/third-parts/segger_rtt/SEGGER_RTT_printf.c": "5db01ab7c393c7f686c1e6fda69da1a15d3a44060f80f888f48f91de2aa7d5aa"
+}

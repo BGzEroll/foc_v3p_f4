@@ -1,0 +1,14 @@
+{
+  "samples": 202351,
+  "last_period_us": 50,
+  "max_step_cycles": 2371,
+  "max_loop_cycles": 7262,
+  "capture_count": 512,
+  "active": 0,
+  "fault": 0,
+  "request": 0,
+  "switch_good": 0,
+  "current_mapping": 1,
+  "step_max_us": 14.113095238095237,
+  "loop_max_us": 43.226190476190474
+}

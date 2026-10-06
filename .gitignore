@@ -1,1 +1,13 @@
 /build/
+/scripts/pll/*.mex*
+/scripts/pll/results/*.mat
+/scripts/pll/results/forward_step.csv
+/scripts/pll/results/reverse_step.csv
+/scripts/pll/results/current_noise.csv
+/scripts/pll/results/R_plus20pct.csv
+/scripts/pll/results/L_plus20pct.csv
+/scripts/pll/results/low_speed.csv
+/scripts/pll/results/emf_loss.csv
+*.slxc
+slprj/
+__pycache__/

@@ -1,0 +1,30 @@
+2026-10-06T15:11:31+09:00
+Internal ctest changing into directory: /home/bgzerol/embedded_project/foc_v3p/build/tests-pll
+Test project /home/bgzerol/embedded_project/foc_v3p/build/tests-pll
+    Start 1: sensorless_pll
+1/2 Test #1: sensorless_pll ...................   Passed    0.01 sec
+    Start 2: sensorless_trial_guard
+2/2 Test #2: sensorless_trial_guard ...........   Passed    0.04 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Total Test time (real) =   0.05 sec
+Internal ctest changing into directory: /home/bgzerol/embedded_project/foc_v3p/build/tests-foc
+Test project /home/bgzerol/embedded_project/foc_v3p/build/tests-foc
+    Start 1: foc_math_test
+1/1 Test #1: foc_math_test ....................   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.00 sec
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+   text	   data	    bss	    dec	    hex	filename
+  65276	    120	  65472	 130868	  1ff34	build/PLLRelease/project.elf
+c109d1ff951a3b51f9176149a2c48fd22a63eb94d003fc9f954dfcb37c1eb040  build/PLLRelease/project.bin
+16779e704a1dce872bdc802ace3c8e0e2d8b065856d2d5db70c0c7de0dfee3d2  build/PLLRelease/project.elf
+2496646 openocd -f interface/cmsis-dap.cfg -f target/stm32f4x.cfg -c adapter speed 1000

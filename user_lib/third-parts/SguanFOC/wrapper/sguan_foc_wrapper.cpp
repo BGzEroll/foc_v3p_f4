@@ -3,6 +3,7 @@
 #include "main.h"
 #include "tim.h"
 #include "system/sys_time.h"
+#include "drivers/foc/sensorless/pll_experiment.h"
 #include <math.h>
 extern "C"
 {
@@ -185,6 +186,10 @@ foc_result sguan_foc_wrapper::init(const sguan_foc_config &config)
     last_result_ = foc_result::OK;
 
     apply_config_to_backend();
+    pll_experiment_init();
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
     Sguan.status = MOTOR_STATUS_UNINITIALIZED;
     return foc_result::OK;
 }
@@ -664,8 +669,72 @@ void sguan_foc_wrapper::loop_foc()
     {
         return;
     }
+    if(state_ == sguan_foc_state::FAULT)
+    {
+        MOTOR_EN_GPIO_Port->BSRR=(uint32_t)MOTOR_EN_Pin<<16;
+        TIM8->BDTR &= ~TIM_BDTR_MOE;
+        return;
+    }
 
+    uint32_t loop_start_cycles = DWT->CYCCNT;
     SguanFOC_High_Loop();
+    if(state_ == sguan_foc_state::READY && output_enabled_)
+    {
+        rotor_sample reference{};
+        float reference_angle = NAN, reference_speed = NAN;
+        uint32_t now_us = sys_time::get_us_tick();
+        // Read-only reference: failure here does not invalidate sensorless feedback.
+        bool reference_available = false;
+        if(!pll_experiment.active && last_rotor_sample_valid_)
+        {
+            reference = last_rotor_sample_;
+            reference_available = true;
+        }
+        else if(sensor_ && sensor_->read_from_isr(reference) == foc_result::OK)
+        {
+            reference_available = true;
+        }
+        if(reference_available &&
+            reference.valid && now_us-reference.timestamp_us < ROTOR_HARD_TIMEOUT_US)
+        {
+            float mech = reference.mechanical_angle_rad + reference.mechanical_velocity_rad_s *
+                (float)(now_us-reference.timestamp_us)*1e-6f;
+            reference_angle = Value_normalize((mech-Sguan.encoder.Pos_offset)*
+                config_.motor.encoder_direction*config_.motor.pole_pairs);
+            reference_speed = reference.mechanical_velocity_rad_s*
+                config_.motor.encoder_direction*config_.motor.pole_pairs;
+        }
+        // Reconstruct average logical phase voltage from the final saturated duties.
+        // PWM_Dir=-1 in this board convention: high input gives inverse effective duty.
+        float du=(float)Sguan.foc.Duty_u/config_.pwm_period;
+        float dv=(float)Sguan.foc.Duty_v/config_.pwm_period;
+        float dw=(float)Sguan.foc.Duty_w/config_.pwm_period;
+        if(config_.motor.motor_direction == -1) {float tmp=du;du=dv;dv=tmp;}
+        float bus=Sguan.foc.Real_VBUS;
+        float polarity=(float)config_.motor.pwm_direction;
+        float va=polarity*bus*(2.0f*du-dv-dw)/3.0f;
+        float vb=polarity*bus*(dv-dw)*0.57735026919f;
+        uint32_t step_start_cycles=DWT->CYCCNT;
+        pll_experiment_step(va,vb,Sguan.current.Real_Ialpha,Sguan.current.Real_Ibeta,
+            reference_angle,reference_speed,bus,now_us);
+        uint32_t step_cycles=DWT->CYCCNT-step_start_cycles;
+        if(step_cycles>pll_experiment.max_step_cycles) pll_experiment.max_step_cycles=step_cycles;
+        if(pll_experiment.fault)
+        {
+            MOTOR_EN_GPIO_Port->BSRR=(uint32_t)MOTOR_EN_Pin<<16;
+            TIM8->BDTR &= ~TIM_BDTR_MOE;
+            output_enabled_=false;
+            state_=sguan_foc_state::FAULT;
+            last_result_=foc_result::SENSOR_ERROR;
+        }
+    }
+    uint32_t loop_cycles=DWT->CYCCNT-loop_start_cycles;
+    if(loop_cycles>pll_experiment.max_loop_cycles) pll_experiment.max_loop_cycles=loop_cycles;
+    if(state_ == sguan_foc_state::FAULT)
+    {
+        MOTOR_EN_GPIO_Port->BSRR=(uint32_t)MOTOR_EN_Pin<<16;
+        TIM8->BDTR &= ~TIM_BDTR_MOE;
+    }
     snapshot_divider_++;
     if(snapshot_divider_ >= SNAPSHOT_DIVIDER)
     {
@@ -858,6 +927,9 @@ float sguan_foc_wrapper::read_encoder_from_isr()
         last_rotor_sample_.timestamp_us;
     if(elapsed_us > ROTOR_HARD_TIMEOUT_US)
     {
+        pll_experiment.encoder_fault_age_us=elapsed_us;
+        pll_experiment.encoder_fault_sample_us=last_rotor_sample_.timestamp_us;
+        pll_experiment.encoder_fault_now_us=sys_time::get_us_tick();
         sensor_fault_ = true;
         output_enabled_ = false;
         state_ = sguan_foc_state::FAULT;

@@ -30,12 +30,24 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 # Core project settings
 project(${CMAKE_PROJECT_NAME})
 message("Build type: " ${CMAKE_BUILD_TYPE})
+option(PLL_KEEP_DEBUG_SYMBOLS "Retain symbols in the optimized PLL experiment firmware" OFF)
+option(PLL_ENABLE_RTT "Enable nonblocking 10 Hz PLL RTT diagnostics" OFF)
+option(PLL_AUTO_RUN_ENCODER "Auto-run the 0.10 A encoder baseline after alignment" OFF)
 
 # Enable CMake support for ASM, C and C++ languages
 enable_language(C ASM CXX)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
+if(PLL_KEEP_DEBUG_SYMBOLS)
+    target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE -O2 -g3)
+endif()
+if(PLL_ENABLE_RTT)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE PLL_ENABLE_RTT RTT_USE_ASM=0)
+endif()
+if(PLL_AUTO_RUN_ENCODER)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE PLL_AUTO_RUN_ENCODER)
+endif()
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
@@ -55,6 +67,24 @@ file(GLOB_RECURSE USER_LIB_SOURCES CONFIGURE_DEPENDS
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${USER_LIB_SOURCES}
 )
+
+# Keep the 20 kHz estimator optimized even in Debug; retain debug symbols.
+set_source_files_properties(
+    user_lib/drivers/foc/sensorless/bemf_pll.c
+    user_lib/drivers/foc/sensorless/pll_experiment.c
+    PROPERTIES COMPILE_OPTIONS "-O2"
+)
+# The legacy FOC core also runs in this same 50 us ISR. -O0 exceeded the
+# deadline on the F407 and silently halved the effective update rate.
+file(GLOB PLL_BACKEND_C_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/user_lib/third-parts/SguanFOC/*.c)
+set_source_files_properties(${PLL_BACKEND_C_SOURCES}
+    user_lib/third-parts/SguanFOC/wrapper/sguan_foc_wrapper.cpp
+    user_lib/drivers/foc/sensors/current_sense/stm32_two_shunt_current_sensor.cpp
+    user_lib/system/sys_time.cpp
+    Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_adc.c
+    Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_adc_ex.c
+    Middlewares/Third_Party/FreeRTOS/Source/queue.c
+    PROPERTIES COMPILE_OPTIONS "-O2")
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE

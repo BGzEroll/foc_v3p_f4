@@ -1,0 +1,16 @@
+cmake_minimum_required(VERSION 3.22)
+project(sensorless_pll_tests C)
+enable_testing()
+set(CMAKE_C_STANDARD 11)
+add_executable(pll_test pll_test.c ../../user_lib/drivers/foc/sensorless/bemf_pll.c)
+target_include_directories(pll_test PRIVATE ../../user_lib/drivers/foc/sensorless)
+target_compile_options(pll_test PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(pll_test m)
+add_test(NAME sensorless_pll COMMAND pll_test)
+add_executable(pll_experiment_test pll_experiment_test.c
+    ../../user_lib/drivers/foc/sensorless/bemf_pll.c
+    ../../user_lib/drivers/foc/sensorless/pll_experiment.c)
+target_include_directories(pll_experiment_test PRIVATE ../../user_lib/drivers/foc/sensorless)
+target_compile_options(pll_experiment_test PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(pll_experiment_test m)
+add_test(NAME sensorless_trial_guard COMMAND pll_experiment_test)

@@ -7,6 +7,10 @@
 #include "tim.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "drivers/foc/sensorless/pll_experiment.h"
+#ifdef PLL_ENABLE_RTT
+#include "debug/pll_rtt.h"
+#endif
 
 static constexpr uint8_t AS5600_I2C_BUS_ID = 0;
 static constexpr uint8_t AS5600_I2C_ADDRESS = 0x36;
@@ -93,7 +97,10 @@ static bool start_current_sampling()
         return false;
     }
 
-    TIM8->BDTR &= ~TIM_BDTR_MOE;
+    // ADC2 TIM8_CC4 trigger follows the timer channel output and is gated by
+    // MOE on STM32F407. Keep neutral PWM alive with MOTOR_EN low, otherwise
+    // the zero-current calibration never receives a conversion.
+    TIM8->BDTR |= TIM_BDTR_MOE;
     return true;
 }
 
@@ -160,12 +167,27 @@ static void sguan_task_entry(void *argument)
         motor_instance.service();
         if(motor_instance.ready() && !default_command_sent)
         {
+#ifdef PLL_AUTO_RUN_ENCODER
             motor_instance.set_controller(
                 motion_control_type::TORQUE);
             motor_instance.move(0.10f);
             motor_instance.enable();
+#else
+            motor_instance.disable();
+#endif
             default_command_sent = true;
         }
+        if(pll_experiment.request == 3 && motor_instance.ready() && !pll_experiment.fault)
+        {
+            // This task owns start commands; the ISR owns trial/stop commands.
+            pll_experiment.request = 0;
+            motor_instance.set_controller(motion_control_type::TORQUE);
+            motor_instance.move(0.10f);
+            motor_instance.enable();
+        }
+#ifdef PLL_ENABLE_RTT
+        pll_rtt_poll();
+#endif
 
         vTaskDelayUntil(&last_wake_time,
             pdMS_TO_TICKS(SGUAN_UPDATE_PERIOD_MS));

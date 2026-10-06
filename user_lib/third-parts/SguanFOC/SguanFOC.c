@@ -18,6 +18,7 @@
 #include "UserData_Motor.h"
 #include "UserData_Parameter.h"
 #include "UserData_UserControl.h"
+#include "drivers/foc/sensorless/pll_experiment.h"
 /* USER CODE END Includes */
 
 // 电机控制核心结构体设计
@@ -226,6 +227,13 @@ static void Current_ReadIabc(SguanFOC_System_STRUCT *sguan){
 // Calculate有传感器角度和电流
 static void Sguan_Calculate_Loop(SguanFOC_System_STRUCT *sguan){
     // 1.有传感器电机角度和角速度计算
+    float sensorless_angle = 0.0f, sensorless_speed = 0.0f;
+    if (pll_experiment_feedback(&sensorless_angle, &sensorless_speed)) {
+        sguan->encoder.Real_Erad = Value_normalize(sensorless_angle);
+        sguan->encoder.Real_Espeed = sensorless_speed;
+        sguan->encoder.Real_Speed = sensorless_speed / sguan->motor.Poles;
+        sguan->encoder.Real_Pos += sguan->encoder.Real_Speed * sguan->PMSM_RUN_T;
+    } else {
     sguan->encoder.Real_Rad = User_Encoder_ReadRad();
     Transfer_PLL_Loop(&sguan->encoder.pll,
                     sguan->mode,
@@ -238,6 +246,7 @@ static void Sguan_Calculate_Loop(SguanFOC_System_STRUCT *sguan){
                             sguan->encoder.pll.go.OutRe*
                             sguan->motor.Poles);
     sguan->encoder.Real_Espeed = sguan->encoder.Real_Speed*sguan->motor.Poles;
+    }
     fast_sin_cos(sguan->encoder.Real_Erad,&sguan->foc.sine,&sguan->foc.cosine);
     // 2.电机相线和各轴电流计算
     Current_ReadIabc(sguan);

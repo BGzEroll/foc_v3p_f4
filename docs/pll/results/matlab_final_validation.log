@@ -1,0 +1,72 @@
+使用 'MinGW64 Compiler (C)' 编译。
+[警告: 您使用的是不受支持的 MinGW 编译器版本。要安装支持的 MinGW 编译器版本，请访问 https://www.mathworks.com/help/matlab/matlab_external/install-mingw-support-package.html。
+ 有关当前支持的编译器的列表，请参阅: https://www.mathworks.com/support/compilers。]
+[> 位置：run_pll_simulation (第 12 行)]
+MEX 已成功完成。
+       case_name       angle_rms_rad    speed_rms_rad_s    lock_fraction
+    _______________    _____________    _______________    _____________
+
+    "forward_step"      0.00013587         0.0023865                1
+    "reverse_step"      0.00013574         0.0020295                1
+    "current_noise"      0.0025875           0.29734                1
+    "R_plus20pct"          0.17271         0.0024194                1
+    "L_plus20pct"       0.00016419         0.0024416                1
+    "low_speed"                NaN               NaN                0
+    "emf_loss"          9.3437e-05         0.0026571          0.48148
+
+    pll_wn_rad_s    angle_rms_rad    speed_noise_std_rad_s
+    ____________    _____________    _____________________
+
+         60          0.00099742            0.030557
+        200           0.0017669             0.20835
+        500           0.0029547             0.84881
+
+PASS: C implementation in MATLAB; results: C:\Users\16004\Desktop\PLL锁相环测试\project\scripts\pll\results
+使用 'MinGW64 Compiler (C)' 编译。
+[警告: 您使用的是不受支持的 MinGW 编译器版本。要安装支持的 MinGW 编译器版本，请访问 https://www.mathworks.com/help/matlab/matlab_external/install-mingw-support-package.html。
+ 有关当前支持的编译器的列表，请参阅: https://www.mathworks.com/support/compilers。]
+[> 位置：build_simulink_demo (第 8 行)]
+MEX 已成功完成。
+[警告: The model name 'sensorless_pll_learning' is shadowing another name in the MATLAB workspace or path. Type "which -all sensorless_pll_learning" at the command line
+to find the other uses of this name. You should change the name of the model to avoid problems.]
+[> 位置：build_simulink_demo (第 13 行)]
+PASS: Simulink C block demo generated and simulated.
+    angle_rms_rad    angle_bias_rad    speed_rms_rad_s    lock_fraction    active_fraction    encoder_mean_rad_s    pll_mean_rad_s    mean_emf_v
+    _____________    ______________    _______________    _____________    _______________    __________________    ______________    __________
+
+       1.6985           -1.6984            4.7804               0                 0              -0.00016795          0.0099033        0.28386
+
+    angle_rms_rad    angle_bias_rad    speed_rms_rad_s    lock_fraction    active_fraction    encoder_mean_rad_s    pll_mean_rad_s    mean_emf_v
+    _____________    ______________    _______________    _____________    _______________    __________________    ______________    __________
+
+       0.23313          0.21984            323.75               0                 0                 323.35              646.34          1.1726
+
+    angle_rms_rad    angle_bias_rad    speed_rms_rad_s    lock_fraction    active_fraction    encoder_mean_rad_s    pll_mean_rad_s    mean_emf_v
+    _____________    ______________    _______________    _____________    _______________    __________________    ______________    __________
+
+       0.3812           -0.10117            44.71               0                 0                 92.204              102.57          0.3581
+
+    angle_rms_rad    angle_bias_rad    speed_rms_rad_s    lock_fraction    active_fraction    encoder_mean_rad_s    pll_mean_rad_s    mean_emf_v
+    _____________    ______________    _______________    _____________    _______________    __________________    ______________    __________
+
+       0.34285          -0.24694           23.748               0                 0                 81.271              70.608         0.32103
+
+    angle_rms_rad    angle_bias_rad    speed_rms_rad_s    lock_fraction    active_fraction    encoder_mean_rad_s    pll_mean_rad_s    mean_emf_v
+    _____________    ______________    _______________    _____________    _______________    __________________    ______________    __________
+
+       0.36544          -0.22103           36.617               0                 0                 76.403              56.256         0.24403
+
+    angle_rms_rad    angle_bias_rad    speed_rms_rad_s    lock_fraction    active_fraction    encoder_mean_rad_s    pll_mean_rad_s    mean_emf_v
+    _____________    ______________    _______________    _____________    _______________    __________________    ______________    __________
+
+       1.6385           -1.6385            2.1226               0                 0              -8.3975e-05          -0.0017013        1.3009
+
+    angle_rms_rad    angle_bias_rad    speed_rms_rad_s    lock_fraction    active_fraction    encoder_mean_rad_s    pll_mean_rad_s    mean_emf_v
+    _____________    ______________    _______________    _____________    _______________    __________________    ______________    __________
+
+       1.6463           -1.6463            0.11819          0.033203              0                   0               0.0047435         1.298
+
+    angle_rms_rad    angle_bias_rad    speed_rms_rad_s    lock_fraction    active_fraction    encoder_mean_rad_s    pll_mean_rad_s    mean_emf_v
+    _____________    ______________    _______________    _____________    _______________    __________________    ______________    __________
+
+       0.48849          -0.21336           42.454               0                 0                 72.76               58.843          0.3032

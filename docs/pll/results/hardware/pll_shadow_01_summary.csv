@@ -1,0 +1,2 @@
+angle_rms_rad,angle_bias_rad,speed_rms_rad_s,lock_fraction,active_fraction,encoder_mean_rad_s,pll_mean_rad_s,mean_emf_v
+0.233130910954966,0.219842232916158,323.752380587068,0,0,323.348215937614,646.342126727104,1.17256460063512

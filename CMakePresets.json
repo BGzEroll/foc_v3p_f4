@@ -23,6 +23,17 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release"
             }
+        },
+        {
+            "name": "PLLRelease",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "PLL_KEEP_DEBUG_SYMBOLS": "ON",
+                "PLL_ENABLE_RTT": "ON",
+                "CMAKE_C_FLAGS_RELEASE": "-O2 -g3",
+                "CMAKE_CXX_FLAGS_RELEASE": "-O2 -g3"
+            }
         }
     ],
     "buildPresets": [
@@ -33,6 +44,10 @@
         {
             "name": "Release",
             "configurePreset": "Release"
+        },
+        {
+            "name": "PLLRelease",
+            "configurePreset": "PLLRelease"
         }
     ]
 }
